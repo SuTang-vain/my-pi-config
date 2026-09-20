@@ -1,0 +1,10 @@
+# 永不入库（防御性；本仓库发布时本就不含这些文件）
+auth.json
+models-store.json
+sessions/
+missions/
+run-history.jsonl
+node_modules/
+session-hoarder/
+*.local
+.DS_Store

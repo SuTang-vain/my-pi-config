@@ -1,0 +1,31 @@
+{
+  "defaultModel": "deepseek-flash",
+  "defaultProvider": "deepseek",
+  "defaultThinkingLevel": "high",
+  "compaction": {
+    "reserveTokens": 48000,
+    "keepRecentTokens": 60000
+  },
+  "lastChangelogVersion": "0.86.0",
+  "modelThinkingLevels": {
+    "zai-coding-cn/glm-5.3-flash": "max",
+    "kimi-coding/kimi-for-coding-highspeed": "high",
+    "deepseek/deepseek-flash": "max",
+    "kimi-coding/k3": "max",
+    "kimi-coding/kimi-for-coding": "max"
+  },
+  "showCacheMissNotices": true,
+  "skills": [
+    "~/.pi/agent/skills-optional/scientific-agent-skills/skills/exa-search/SKILL.md",
+    "~/.pi/agent/skills-optional/scientific-agent-skills/skills/pi-agent/SKILL.md",
+    "~/.pi/agent/skills-optional/scientific-agent-skills/skills/literature-review/SKILL.md",
+    "~/.pi/agent/skills-optional/scientific-agent-skills/skills/paper-lookup/SKILL.md"
+  ],
+  "theme": "catppuccin-mocha",
+  "tuiMode": "fullscreen",
+  "packages": [
+    "npm:pi-subagents",
+    "npm:@juicesharp/rpiv-ask-user-question",
+    "npm:pi-goal-x"
+  ]
+}

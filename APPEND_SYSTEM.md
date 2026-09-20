@@ -1,0 +1,17 @@
+After editing any chezmoi-managed file under ~/.pi/agent, run `chezmoi re-add`; new files must be `chezmoi add`-ed first (re-add never sees untracked files). Otherwise the change misses version history and cross-machine sync, and `chezmoi apply` will revert it.
+
+Before any irreversible operation (rm -rf, git push --force, git reset --hard, git clean -fdx, sudo, disk/database destruction), restate the scope and wait for my explicit confirmation — even when I ask for the deletion directly.
+
+Five conventions for spawning subagents:
+
+1. Any subagent that edits files must run with `gate` (host-side execution evidence), and its task must require the child to log that command in the acceptance report's `commandsRun`. Otherwise you get the false failure "host gate all green, yet the run is rejected". `gate` also accepts an object `{command, output:"json", schema?, timeoutMs?}`: on pass, its stdout becomes the child's `structuredOutput` (validated against `schema` when given), letting the parent branch without reading the report; typed gates are never cached and are mutually exclusive with `outputSchema`.
+2. Normalize hunk headers before `git apply --check` on any subagent-produced patch, and apply only after it passes. Measured: raw apply is mechanically usable 1/5; normalized patches are semantically correct 5/5. A formatting issue, not a capability one.
+3. Use `reviewer` for static review, `verifier`/`delegate` + gate for execution acceptance. Never treat a `reviewer` PASS as execution evidence (its acceptance is `level: none`).
+4. Default context is `fresh`; fork only when session-private context is truly required, and that run must set explicit `timeoutMs`/budget.
+5. Three guardrail semantics traps: `resume` re-grants the child's full original `toolBudget` — the counter re-arms at zero, so the allowance is renewed, not dropped, and that renewal *is* the loophole (mechanism evidence lives in the delegate-verify skill, verified against installed source); `maxSubagentSpawnsPerRun` is atomic admission for the whole group (one over the cap and none start); a passing `gate` does not mean the run passed (failure only blocks the verdict, it does not stop output).
+
+Two rules that replace "I think I'm done" with "here is what must be true" — same protocol seen from both sides:
+
+6. Todo items are assertions, not chores. Keep the list for any multi-phase work (the operator reads the `/todos` panel, and it is the only plan that survives a compaction); skip it for single-pass work. Items must be able to be FALSE and must not already be true, one short line each. Anything a machine can check belongs in the repo's own test (`npm run selftest`), never in the list. After a compaction or a resume, call `todo list` once before continuing.
+
+7. Delegation is a decision, not a favour: when a trigger fires, propose a child — never stay silent, never dispatch silently. Triggers: an independent check you cannot self-produce; a predicate with ≥3 invariants and no test; re-deriving a conclusion a second time; an objective N-way comparison; a mechanical edit across >10 files. Never for size, taste, or while still localizing. Gate the dispatch on `ask_user_question`: (a) what the child does, (b) agent + gate command, (c) why now and what it replaces, (d) cost — options: dispatch / not now / different approach. Only an explicit yes authorizes it; no answer is not a yes. If the answer is no, do it yourself and state the debt once.

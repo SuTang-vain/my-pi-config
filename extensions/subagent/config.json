@@ -1,0 +1,9 @@
+{
+  "defaultSubagentContext": "fresh",
+  "maxSubagentSpawnsPerSession": 40,
+  "checkpointBeforeDeadlineMs": 60000,
+  "inlineToolDisplay": "summary",
+  "mainWindowRenderer": {
+    "compactResultMaxLines": 4
+  }
+}

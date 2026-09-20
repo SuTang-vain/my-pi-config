@@ -1,0 +1,13 @@
+{
+  "name": "pi-extensions",
+  "private": true,
+  "scripts": {
+    "selftest": "node ../scripts/selftest.mjs"
+  },
+  "dependencies": {
+    "@juicesharp/rpiv-ask-user-question": "^2.10.1",
+    "pi-goal-x": "^0.31.6",
+    "pi-subagents": "^0.70.0",
+    "@earendil-works/pi-coding-agent": "file:~/.local/lib/node_modules/@earendil-works/pi-coding-agent"
+  }
+}
