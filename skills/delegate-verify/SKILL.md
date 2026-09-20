@@ -7,11 +7,14 @@ description: Use when dispatching subagents to verify or cross-check conclusions
 
 ## Flow
 
-1. **Preflight**: `subagent({action:"list", capabilities:true})` — confirm the target agent is executable and note its role/tool constraints.
-2. **Casting** (read-only by default): claim verification → `evidence-auditor`; directory/package recon → `scout`; use a writer agent only when the operator explicitly asks for modifications.
-3. **Fan out once**: a single async `workflowScript` + `runs.all([...])` with all verification tasks; stable independent keys, verb-phrase labels.
-4. **Yield immediately**: no bg_wait, no polling; wake on the native completion notification.
-5. **Reconcile conflicts first**: when a child's verdict conflicts with yours, trust the side with reproducible evidence; if still in doubt, re-check or re-run — don't split the difference.
+1. **Preflight (once per session)**: `subagent({action:"list", capabilities:true})` — the returned capability rows (each carrying the agent's description, tools, model and acceptance role) are authoritative for casting. Re-run only if `agents/` changed mid-session.
+
+   **Fresh machine?** Dispatching before bootstrap wastes rounds: if a whitelisted skill path or the host package is missing, run `cd ~/.pi/agent/npm && npm install && npm run selftest` first — those invariants cover whitelist paths and host-package resolution. If `researcher`/`evidence-auditor` fail on a missing exa path, run `~/.pi/agent/scripts/clone-skill-repos.sh` first (sparse clone of `skills/` only, ~2MB rather than 857MB).
+2. **Agent detail — escalate, never scan**: do **not** read `agents/*.md` (7 files, ~38KB) to cast. The capability row omits `systemPromptMode`, `inheritProjectContext`, `inheritGlobalContext` and `inheritSkills`; when you need one of those — or any other frontmatter field — call `subagent({action:"get", agent:"X"})` for that one agent only; it also returns the agent's `Path` and its full system prompt.
+3. **Casting** (read-only by default): claim verification → `evidence-auditor`; directory/package recon → `scout`; use a writer agent only when the operator explicitly asks for modifications.
+4. **Fan out once**: a single async `workflowScript` + `runs.all([...])` with all verification tasks; stable independent keys, verb-phrase labels.
+5. **Yield immediately**: no bg_wait, no polling; wake on the native completion notification.
+6. **Reconcile conflicts first**: when a child's verdict conflicts with yours, trust the side with reproducible evidence; if still in doubt, re-check or re-run — don't split the difference.
 
 ## Child Prompt — Five Required Elements
 

@@ -13,6 +13,16 @@
 | `pi-goal-x` peer 区间排除 pi 0.86 | `tmonk/pi-goal-x` | 新 issue **#77** | <https://github.com/tmonk/pi-goal-x/issues/77> |
 | `<pkg>/index.js` 未定性观察 | 不单独提交 | 已并入上表第 1 条 | — |
 
+### 事后追记（2026-09-20 当日）：Issue 1 已在上游修复
+
+`#2346` 于 **2026-09-20T06:21:15Z 关闭为 COMPLETED**，由 **#2352**（`fix(child-session): preserve host SDK ownership`，06:21:14Z 合并）修复。该 PR 完成的是社区贡献者 **#2348（@nazerim）** 的方案，CHANGELOG（unreleased）原文：
+
+> *Load the host `pi-coding-agent` for in-process child sessions from the **resolved host package root instead of only a bare specifier**, so foreground children launch on npm-hosted Pi installations where the extension's own `node_modules` tree cannot resolve the bare module.*
+
+⇒ **本文正文描述的“当前状态”已过时**：该缺陷对 **0.70.0** 成立，但在 main 上已修。截至本追记 npm `latest` 仍为 **0.70.0**，所以修复**尚未发布**。
+
+⇒ 连带：我本地为绕过它装的 `file:` 符号链接（`npm/package.json`）在发布后应**复评是否可撤**。但 #2352 **只改了 `child-session.ts`**，包内另有 3 处裸 specifier 站点（`fleet.js` / `prompt-audit.js` / `llm-intent-arbiter.js`），所以**大概率仍需保留**（其中 `llm-intent-arbiter` 将被 #2356 整个删除）。
+
 ### 为什么第 1 条是评论而非新 issue（重要教训）
 
 发布前查重发现 **`pi-subagents#2346` 已存在且 OPEN** ——

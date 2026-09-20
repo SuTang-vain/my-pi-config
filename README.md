@@ -129,9 +129,9 @@ These defects were found in this configuration and fixed; each is recorded with 
 # 1. Copy into ~/.pi/agent/ (or adopt individual pieces)
 # 2. Install extension packages
 cd npm && npm install
-# 3. Adjust the file: dependency in npm/package.json to point at your global pi
-#    installation (absolute path; ~ is not expanded by npm). Background:
-#    docs/upstream-issue-host-package-resolution.md
+# 3. The pi host package is a normal semver dependency (^0.86.0) — resolution
+#    works out of the box; npm/.npmrc sets legacy-peer-deps to tolerate
+#    pi-goal-x's outdated peer range. Background: docs/upstream-issue-host-package-resolution.md
 # 4. Create auth.json with your provider keys, then chmod 600:
 #    { "<provider>": { "type": "api_key", "key": "sk-..." } }
 # 5. Verify

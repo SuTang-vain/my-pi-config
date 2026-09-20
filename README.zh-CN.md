@@ -129,8 +129,9 @@
 # 1. 复制到 ~/.pi/agent/（或按需摘取）
 # 2. 安装扩展包
 cd npm && npm install
-# 3. 将 npm/package.json 中的 file: 依赖改为你机器上全局 pi 的绝对路径
-#    （npm 不展开 ~）。背景见 docs/upstream-issue-host-package-resolution.md
+# 3. pi 宿主包是普通 semver 依赖（^0.86.0），开箱即可解析；
+#    npm/.npmrc 以 legacy-peer-deps 容忍 pi-goal-x 的过期 peer 范围。
+#    背景见 docs/upstream-issue-host-package-resolution.md（Issue 1 上游已修复）
 # 4. 自建 auth.json 填入你的 provider 密钥，然后 chmod 600：
 #    { "<provider>": { "type": "api_key", "key": "sk-..." } }
 # 5. 校验

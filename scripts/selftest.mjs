@@ -192,26 +192,75 @@ check("settings.skills 每个路径都存在", () => {
 	return missing.length ? `不存在的路径: ${missing.join(", ")}` : null;
 });
 
-check("所有已发现技能 frontmatter 合法且无重名", () => {
-	const roots = [path.join(AGENT_DIR, "skills")];
+check("所有已发现技能 frontmatter 是合法 YAML 且无重名", () => {
+	// Roots: `skills/` plus `skills-optional/`. The latter was previously unscanned —
+	// which is how two skills with invalid frontmatter stayed invisible to this test.
+	const roots = [path.join(AGENT_DIR, "skills"), path.join(AGENT_DIR, "skills-optional")];
+	let YAML;
+	try {
+		YAML = createRequire(path.join(NPM_DIR, "package.json"))("yaml");
+	} catch {
+		return { warn: "yaml 包不可用，无法真解析 SKILL.md frontmatter" };
+	}
 	const found = new Map();
 	const bad = [];
+	const seen = new Set();
 	const walk = (dir) => {
 		if (!exists(dir)) return;
-		for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+		let real;
+		try {
+			real = fs.realpathSync(dir);
+		} catch {
+			return;
+		}
+		if (seen.has(real)) return; // symlinked roots / dup paths visit once
+		seen.add(real);
+		let entries;
+		try {
+			entries = fs.readdirSync(dir, { withFileTypes: true });
+		} catch {
+			return; // unreadable directory is not a skill problem
+		}
+		for (const entry of entries) {
+			// Two walker bugs were found here on 2026-09-20, in opposite directions:
+			//   • NOT following symlinked DIRECTORIES silently skipped a whole tree
+			//     (`skills/ego-browser` is a symlink) — a false negative.
+			//   • Following symlinked FILES (`skills-optional/pdf-reader/.venv/bin/python`)
+			//     made readdirSync throw ENOTDIR — a crash.
+			// So: skip dot-entries, and recurse only after proving the target is a directory.
+			if (entry.name.startsWith(".")) continue;
 			const p = path.join(dir, entry.name);
-			if (entry.isDirectory() || entry.isSymbolicLink()) walk(p);
+			let isDir = entry.isDirectory();
+			if (!isDir && entry.isSymbolicLink()) {
+				try {
+					isDir = fs.statSync(p).isDirectory();
+				} catch {
+					isDir = false;
+				}
+			}
+			if (isDir) walk(p);
 			else if (entry.name === "SKILL.md") {
 				const raw = fs.readFileSync(p, "utf8");
 				const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
 				if (!fm) return bad.push(`${p}: 无 frontmatter`);
-				const name = fm[1].match(/^name\s*:\s*(.+)$/m)?.[1]?.trim().replace(/^["']|["']$/g, "");
-				const desc = fm[1].match(/^description\s*:\s*(.+)$/m)?.[1]?.trim();
-				if (!name) return bad.push(`${p}: 缺 name`);
+				// A real YAML parse, not regex field-extraction. A plain (unquoted) scalar
+				// containing ": " makes the whole frontmatter invalid — "Nested mappings
+				// are not allowed in compact mappings" — and the skill silently fails to
+				// load. Regex extraction still finds name/description in such a file, so it
+				// reported a false green on 2026-09-20 (2 of 17 skills).
+				let doc;
+				try {
+					doc = YAML.parse(fm[1]);
+				} catch (error) {
+					return bad.push(`${p}: frontmatter 不是合法 YAML — ${String(error?.message ?? error).split("\n")[0]}`);
+				}
+				if (!doc || typeof doc !== "object" || Array.isArray(doc)) return bad.push(`${p}: frontmatter 解析结果不是映射`);
+				if (typeof doc.name !== "string" || !doc.name.trim()) return bad.push(`${p}: 缺 name`);
+				const name = doc.name.trim();
 				if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name) || name.length > 64)
 					bad.push(`${p}: name "${name}" 违反 Agent Skills 规范`);
-				if (!desc) bad.push(`${p}: 缺 description`);
-				else if (desc.length > 1024) bad.push(`${p}: description ${desc.length} 字符 > 1024`);
+				if (typeof doc.description !== "string" || !doc.description.trim()) bad.push(`${p}: 缺 description`);
+				else if (doc.description.length > 1024) bad.push(`${p}: description ${doc.description.length} 字符 > 1024`);
 				if (found.has(name)) bad.push(`技能名 "${name}" 冲突: ${found.get(name)} 与 ${p}`);
 				else found.set(name, p);
 			}
