@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: Desk researcher (exa index, breadth) — batch search and extraction with academic/domain/date filtering. When full content is unreachable (login required / JS rendering / interaction / paywall / anti-bot), report "insufficient evidence" explicitly instead of papering over with index snippets. Contrast: desk researcher vs field inspector (browser interaction for first-hand evidence).
-aliases: research, desk-research, 调研, 案头, 检索
+aliases: research, desk-research
 tools: read, write, bash, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true

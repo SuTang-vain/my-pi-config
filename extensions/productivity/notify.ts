@@ -80,6 +80,6 @@ export default function (pi: ExtensionAPI) {
 		if (process.env.HERDR_ENV === "1") return;
 
 		const name = pi.getSessionName();
-		notify("pi", name ? `「${name}」已完成,等待输入` : "已完成,等待输入");
+		notify("pi", name ? `[${name}] finished, awaiting input` : "finished, awaiting input");
 	});
 }

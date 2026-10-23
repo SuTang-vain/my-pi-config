@@ -10,7 +10,7 @@
  * shape of the injected message — was only ever verified by hand. That is the failure mode
  * nobody notices: the handler is wrapped in try/catch and fails silently, and a renamed
  * context API would simply stop the reports without any signal. These tests assert the
- * wiring, not the policy ("0.05 花得值不值" 由 usage-policy.test.mjs 负责).
+ * wiring, not the policy (whether $0.05 was worth it is the concern of usage-policy.test.mjs).
  */
 
 import test from "node:test";
@@ -99,8 +99,8 @@ test("the first report needs the turn floor and the spend delta, and carries the
 	assert.equal(message.customType, "usage");
 	assert.equal(message.display, false, "the injection is not shown to the human");
 	assert.equal(options.deliverAs, "steer", "steer is what makes it land before the next request");
-	assert.match(message.content, new RegExp(`间隔 ${DEFAULT_POLICY.everyTurns} 轮·新增 \\$0\\.\\d+`));
-	assert.match(message.content, /仅状态播报，非任务$/);
+	assert.match(message.content, new RegExp(`${DEFAULT_POLICY.everyTurns} turns · \\+\\$0\\.\\d+ spend`));
+	assert.match(message.content, /status only, not a task$/);
 	assert.equal(message.content.includes("\n"), false);
 });
 
@@ -132,7 +132,7 @@ test("headless still reports a context-tier crossing", async () => {
 	await h.turn({ cost: 0.005, ctxTokens: 149_500 });
 	await h.turn({ cost: 0.005, ctxTokens: 151_000 });
 	assert.equal(h.sent.length, 1);
-	assert.match(h.sent[0].message.content, /ctx 越过 150k/);
+	assert.match(h.sent[0].message.content, /ctx crossed 150k/);
 });
 
 test("headless still reports a cost band crossing", async () => {
@@ -141,7 +141,7 @@ test("headless still reports a cost band crossing", async () => {
 	await h.turn({ cost: 0.1 });
 	await h.turn({ cost: 0.5 }); // cumulative $0.60 crosses the $0.50 band
 	assert.equal(h.sent.length, 1);
-	assert.match(h.sent[0].message.content, /成本 0→1 档（\$0\.50）/);
+	assert.match(h.sent[0].message.content, /cost tier 0→1 \(\$0\.50\)/);
 });
 
 // ── fail-quiet ────────────────────────────────────────────────────────

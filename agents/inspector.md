@@ -1,7 +1,7 @@
 ---
 name: inspector
 description: Field inspector (ego-browser, deep) — personally visits pages to gather evidence: rendered JS, reused login state, clicking, form filling, screenshots/DOM. Use when actual page content, post-login data, or interaction-dependent content is required, or when researcher reports "insufficient evidence". If the browser path also fails, report failure explicitly — never fabricate. Contrast: desk researcher vs field inspector.
-aliases: field-inspect, 勘验, 现场, 核验
+aliases: field-inspect
 tools: read, write, bash, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true

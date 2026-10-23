@@ -11,7 +11,7 @@ This repository is **configuration**, and pi loads its `extensions/` directory a
 ## What is deliberately not here
 
 - **Credentials.** No `auth.json`, no API keys. `install.sh` never creates one. You supply your own `auth.json` with mode `0600`.
-- **Machine bindings.** No host names, user names, absolute home paths, ssh configs or systemd units with real values — the ssh/systemd material is a template full of `（待填）` placeholders.
+- **Machine bindings.** No host names, user names, absolute home paths, ssh configs or systemd units with real values — the ssh/systemd material is a template whose fields are explicit `(fill in)` placeholders.
 - **Session data.** No `sessions/`, `run-history.jsonl` or `models-store.json`.
 
 ## Reporting

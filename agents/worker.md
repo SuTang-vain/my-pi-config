@@ -1,7 +1,7 @@
 ---
 name: worker
 description: Implementation subagent — writes code and tests, executes the approved direction
-aliases: developer, coder, implementer, 实现, 开发
+aliases: developer, coder, implementer
 tools: read, grep, find, ls, bash, edit, write, contact_supervisor
 systemPromptMode: replace
 inheritProjectContext: true

@@ -27,7 +27,7 @@ export default function (pi: ExtensionAPI) {
 
 		pi.events.emit("herdr:blocked", {
 			active: data.active,
-			label: data.active ? "等待你的输入" : undefined,
+			label: data.active ? "waiting for your input" : undefined,
 		});
 	});
 }

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# install.sh — 把本仓内容装到 ~/.pi/agent（幂等，不覆盖你已有的 auth.json / sessions / models-store）
+# install.sh — copy this repository into ~/.pi/agent
 #
-#   ./install.sh            # 复制配置 + 安装扩展包
-#   ./install.sh --dry-run   # 只打印将要执行的复制动作
+#   ./install.sh             copy configuration and install extension packages
+#   ./install.sh --dry-run   print the copy operations without performing them
 #
-# 不做什么：不写 auth.json（含密钥，需你自备）、不碰 sessions/、不装 npm 全局包。
+# Idempotent. Does not create or overwrite auth.json (it holds credentials; see SECURITY.md),
+# does not touch sessions/, and does not install global npm packages.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,39 +16,42 @@ DRY=0
 say() { printf '%s\n' "$*"; }
 run() { if [ "$DRY" = 1 ]; then say "[dry] $*"; else eval "$@"; fi; }
 
-say "源: $ROOT"
-say "目标: $DEST"
+say "source: $ROOT"
+say "target: $DEST"
 mkdir -p "$DEST"
 
-# 目录：整体同步（agents / extensions / skills / themes / docs / scripts）
+# Directories are synced wholesale.
 for d in agents extensions skills themes docs scripts; do
   [ -d "$ROOT/$d" ] || continue
-  say "→ $d/"
+  say "-> $d/"
   run "mkdir -p '$DEST/$d'"
   run "rsync -a --exclude='node_modules' '$ROOT/$d/' '$DEST/$d/'"
 done
 
-# 单文件：settings.json 与提示层
+# Single files: the settings file and the two prompt layers.
 for f in settings.json AGENTS.md APPEND_SYSTEM.md; do
   [ -f "$ROOT/$f" ] || continue
-  say "→ $f"
+  say "-> $f"
   if [ -f "$DEST/$f" ]; then
-    say "  （已存在，备份为 $f.bak-$(date +%Y%m%d%H%M%S)）"
-    run "cp '$DEST/$f' '$DEST/$f.bak-$(date +%Y%m%d%H%M%S)'"
+    stamp="$(date +%Y%m%d%H%M%S)"
+    say "   exists; keeping a backup as $f.bak-$stamp"
+    run "cp '$DEST/$f' '$DEST/$f.bak-$stamp'"
   fi
   run "cp '$ROOT/$f' '$DEST/$f'"
 done
 
-# 扩展包
+# Extension packages.
 if [ -f "$ROOT/npm/package.json" ]; then
-  say "→ npm 依赖安装（$ROOT/npm）"
+  say "-> npm dependencies ($ROOT/npm)"
   run "mkdir -p '$DEST/npm'"
   run "cp '$ROOT/npm/package.json' '$DEST/npm/package.json'"
   run "cd '$DEST/npm' && npm install --legacy-peer-deps"
 fi
 
 say ""
-say "完成。下一步："
-say "  1. 自备凭据：写 $DEST/auth.json（{\"<provider>\":{\"type\":\"api_key\",\"key\":\"...\"}}）并 chmod 600"
-say "  2. 技能白名单里的 skills-optional/* 需自行放置，或从 settings.json 里删掉对应条目"
-say "  3. 验证：cd $DEST/npm && npm run selftest"
+say "Next steps:"
+say "  1. Create $DEST/auth.json with your own provider keys and chmod 600:"
+say '     {"<provider>":{"type":"api_key","key":"..."}}'
+say "  2. The skill whitelist in settings.json points at skills-optional/; place those skills"
+say "     there yourself, or delete the corresponding entries."
+say "  3. Verify: cd $DEST/npm && npm run selftest"

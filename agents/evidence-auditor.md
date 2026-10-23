@@ -1,7 +1,7 @@
 ---
 name: evidence-auditor
 description: Independent evidence reviewer for checking whether important research claims are supported by their sources
-aliases: evidence-audit, 证据审计, 稽核
+aliases: evidence-audit
 tools: read, grep, find, ls, bash
 systemPromptMode: replace
 inheritProjectContext: true

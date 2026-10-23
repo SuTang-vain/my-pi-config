@@ -1,40 +1,47 @@
 /**
- * 用量注入（utility module）
+ * Usage injection (utility module).
  *
- * 动机（实测，2026-09-19 体素项目）：模型看不到 TUI footer 的成本/上下文数字，
- * 于是出现无成本感的长时间打磨 —— 该项目约 40 轮审美微调、19.4M cache-read。
+ * Motivation (measured 2026-09-19, voxel project): the model cannot see the cost and context
+ * figures in the TUI footer, so work continued without any sense of cost — about 40 turns of
+ * aesthetic refinement at 19.4M cache-read tokens.
  *
- * 做法：复用 footer.ts 的同一数据路径（branch 上的 assistant usage + ctx.getContextUsage()），
- * 在 turn_end 时按 usage-policy.js 的判定，用 pi.sendMessage(..., {deliverAs:"steer"})
- * 注入一行用量。steer = 当前工具批次结束后、下一次 LLM 调用前送达，因此能改变当轮行为。
+ * Approach: reuse the same data path as footer.ts (assistant usage on the branch plus
+ * ctx.getContextUsage()) and, on turn_end, let usage-policy.js decide whether to inject one
+ * usage line via pi.sendMessage(..., { deliverAs: "steer" }). "steer" is delivered after the
+ * current tool batch and before the next model call, so it can still change this turn's behaviour.
  *
- * 安全：整个 handler 包在 try/catch 里并静默失败 —— 一个会抛错的扩展会污染用户所有会话。
+ * Safety: the whole handler is wrapped in try/catch and fails silently — an extension that
+ * throws would affect every session the user runs.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { shouldInject, formatUsageLine, DEFAULT_POLICY } from "./usage-policy.js";
 
 /**
- * 只有 print/json 是「无人在旁的一次性运行」。tui/rpc 都保留轮数节流（与 hasUI 的语义一致）。
- * 用反白名单而非白名单：将来新增模式时默认保住心跳，而不是默默失去成本感知。
+ * Only print/json are unattended one-shot runs. tui and rpc keep the turn-based throttle,
+ * consistent with hasUI semantics. This is a denylist rather than an allowlist so that a mode
+ * added later keeps the heartbeat by default instead of silently losing cost awareness.
  */
 function interactiveMode(ctx: ExtensionContext): boolean {
 	return ctx.mode !== "print" && ctx.mode !== "json";
 }
 
 export default function (pi: ExtensionAPI) {
-	// 整体开关，与 notify.ts 的 PI_NO_NOTIFY 对齐。子代理 runner / 批处理环境里带上它，
-	// 就能避免每条 child 会话再多交 1/8 的轮次税（实测 child run 会话里同样的注入会触发）。
+	// Global switch, aligned with PI_NO_NOTIFY in notify.ts. Subagent runners and batch
+	// environments can set it to avoid paying the same injection in every child session
+	// (observed to fire in child run sessions).
 	if (process.env.PI_NO_USAGE_INJECT === "1" || process.env.PI_NO_USAGE_INJECT === "true") return;
 
 	let lastStats: { ctxPct: number; costUsd: number } | null = null;
-	// 从 0 起算（而非 +∞）：间隔条款的「25 轮下限」必须对首次播报也成立，否则首报只由成本决定，
-	// 而理由串会写出一个并未发生的轮数。紧迫的成本事件由成本档/ctx 档独立承担（它们不看轮数）。
+	// Starts at 0 rather than +Infinity: the 25-turn floor of the interval clause must also hold
+	// for the first report, otherwise that report would be driven by cost alone while its reason
+	// string cites a turn count that never happened. Urgent cost events are handled by the cost
+	// and ctx tiers, which ignore turn count.
 	let turnsSinceInject = 0;
-	/** 上次注入时的累计成本：间隔条款现在要「间隔 + 这段间隔里确实花了钱」两个条件（见 usage-policy.js）。 */
+	/** Cumulative cost at the last injection: the interval clause requires both an interval and real spend within it (see usage-policy.js). */
 	let costAtLastInject = 0;
 
-	/** 从当前 branch 汇总用量（与 footer.ts 同口径：prompt = input + cacheRead + cacheWrite） */
+	/** Aggregate usage from the current branch (same accounting as footer.ts: prompt = input + cacheRead + cacheWrite). */
 	function collect(ctx: ExtensionContext) {
 		let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, cost = 0;
 		let lastTurnHitPct = 100;
@@ -70,7 +77,7 @@ export default function (pi: ExtensionAPI) {
 			const s = collect(ctx);
 			const cur = { ctxPct: s.ctxPct, ctxTokens: s.ctxTokens, costUsd: s.cost, turnCacheHitPct: s.lastTurnHitPct, contextWindow: s.contextWindow };
 			const hasPrev = lastStats !== null;
-			// 会话里出现过真实用户消息才播报（避免新会话对状态行空转）
+			// Report only after a real user message exists (a fresh session would otherwise spend a turn on a status line).
 			const hasUserTask = ctx.sessionManager.getBranch().some((e) => {
 				const mm = (e as { message?: { role?: string; content?: unknown } }).message;
 				if (mm?.role !== "user") return false;
@@ -79,7 +86,7 @@ export default function (pi: ExtensionAPI) {
 				return Array.isArray(c) && c.some((x) => (x as { type?: string })?.type === "text" && String((x as { text?: string }).text ?? "").trim().length > 0);
 			});
 			const prev = lastStats ?? { ctxPct: 0, ctxTokens: 0, costUsd: 0 };
-			// 自增放在判定之前：本次 turn_end 也算「已经过去的 1 轮」，否则「间隔 25 轮」实际落在第 26 轮。
+			// Increment before the decision: this turn_end already counts as one elapsed turn, otherwise a 25-turn interval lands on turn 26.
 			turnsSinceInject++;
 			const { inject, reasons } = shouldInject(
 				{
@@ -106,7 +113,7 @@ export default function (pi: ExtensionAPI) {
 				{ deliverAs: "steer" },
 			);
 		} catch {
-			// 静默失败：绝不因为统计口径异常而影响正常会话
+			// Fail silently: an accounting anomaly must never affect a normal session.
 		}
 	});
 }

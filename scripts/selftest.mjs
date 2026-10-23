@@ -49,7 +49,7 @@ function check(name, fn) {
 		if (problem) fails.push({ label, problem });
 		else passes.push(label);
 	} catch (error) {
-		fails.push({ label, problem: `检查本身抛错: ${error?.message ?? error}` });
+		fails.push({ label, problem: `check itself threw: ${error?.message ?? error}` });
 	}
 }
 
@@ -99,23 +99,23 @@ const SUBAGENT_CONFIG_PATH = path.join(AGENT_DIR, "extensions", "subagent", "con
 let settings = null;
 let subagentConfig = null;
 
-check("settings.json 可解析", () => {
+check("settings.json parses", () => {
 	settings = readJson(SETTINGS_PATH);
 	return null;
 });
-check("extensions/subagent/config.json 可解析", () => {
+check("extensions/subagent/config.json parses", () => {
 	subagentConfig = exists(SUBAGENT_CONFIG_PATH) ? readJson(SUBAGENT_CONFIG_PATH) : {};
 	return null;
 });
 
 // ── the model registry: what can actually be selected ─────────────────
-group = "模型注册表";
+group = "model registry";
 const storePath = path.join(AGENT_DIR, "models-store.json");
 const authPath = path.join(AGENT_DIR, "auth.json");
 let registry = new Set();
-let registryNote = "未构建";
+let registryNote = "not built";
 
-check("models-store.json / auth.json 可解析", () => {
+check("models-store.json / auth.json parse", () => {
 	const store = readJson(storePath);
 	const auth = readJson(authPath);
 	const authed = new Set(
@@ -131,41 +131,41 @@ check("models-store.json / auth.json 可解析", () => {
 			if (id) registry.add(`${provider}/${id}`);
 		}
 	}
-	registryNote = `${registry.size} 个可用模型，来自 ${authed.size} 个已配置密钥的 provider`;
-	return registry.size > 0 ? null : "注册表为空：所有 provider 都没有密钥，配置里的任何模型引用都无法验证";
+	registryNote = `${registry.size} models available from ${authed.size} providers with credentials`;
+	return registry.size > 0 ? null : "registry is empty: no provider has credentials, so no model reference can be verified";
 });
 
 const resolves = (id) => registry.has(id);
 
 // ── every model reference must exist in the registry ──────────────────
-group = "模型引用";
-check("settings.defaultProvider/defaultModel 在注册表中", () => {
-	if (!settings) return "settings.json 未解析成功";
+group = "model references";
+check("settings.defaultProvider/defaultModel resolve in the registry", () => {
+	if (!settings) return "settings.json did not parse";
 	const id = `${settings.defaultProvider}/${settings.defaultModel}`;
-	return resolves(id) ? null : `默认模型 ${id} 不在注册表中（${registryNote}）`;
+	return resolves(id) ? null : `default model ${id} is not in the registry (${registryNote})`;
 });
 
-check("settings.modelThinkingLevels 每个键都在注册表中", () => {
-	if (!settings) return "settings.json 未解析成功";
+check("every settings.modelThinkingLevels key resolves in the registry", () => {
+	if (!settings) return "settings.json did not parse";
 	const ghosts = Object.keys(settings.modelThinkingLevels ?? {}).filter((k) => !resolves(k));
-	return ghosts.length ? `${ghosts.length} 个幽灵键（静默失效）: ${ghosts.join(", ")}` : null;
+	return ghosts.length ? `${ghosts.length} ghost keys (silently ignored): ${ghosts.join(", ")}` : null;
 });
 
 if (subagentConfig?.forkContext) {
-	group = "模型引用";
-	check("subagent forkContext.model 在注册表中", () => {
+	group = "model references";
+	check("subagent forkContext.model resolves in the registry", () => {
 		const mode = subagentConfig.forkContext.mode ?? "full";
 		if (mode === "pruned" && !subagentConfig.forkContext.model) {
-			return "mode=pruned 时 forkContext.model 必填（否则启动前必抛 PrunedForkConfigError）";
+			return "forkContext.model is required when mode=pruned (otherwise PrunedForkConfigError is thrown before start)";
 		}
 		const m = (subagentConfig.forkContext.model ?? "").replace(/:(off|minimal|low|medium|high|xhigh|max)$/, "");
 		if (!m) return null;
-		return resolves(m) ? null : `forkContext.model "${m}" 不在注册表中 → 显式 context:"fork" 必抛 "Pruned fork model ... was not found"`;
+		return resolves(m) ? null : `forkContext.model "${m}" is not in the registry → an explicit context:"fork" throws "Pruned fork model ... was not found"`;
 	});
 }
 
-group = "模型引用";
-check("agents/*.md 声明的 model 在注册表中", () => {
+group = "model references";
+check("models declared in agents/*.md resolve in the registry", () => {
 	const dir = path.join(AGENT_DIR, "agents");
 	if (!exists(dir)) return null;
 	const bad = [];
@@ -181,18 +181,18 @@ check("agents/*.md 声明的 model 在注册表中", () => {
 		if (!id.includes("/") && [...registry].some((r) => r.split("/")[1] === id)) continue;
 		bad.push(`${file} → ${id}`);
 	}
-	return bad.length ? `不在注册表中: ${bad.join(", ")}` : null;
+	return bad.length ? `not in the registry: ${bad.join(", ")}` : null;
 });
 
 // ── skills ────────────────────────────────────────────────────────────
-group = "技能";
-check("settings.skills 每个路径都存在", () => {
-	if (!settings) return "settings.json 未解析成功";
+group = "skills";
+check("every settings.skills path exists", () => {
+	if (!settings) return "settings.json did not parse";
 	const missing = (settings.skills ?? []).filter((p) => !exists(expand(p)));
-	return missing.length ? `不存在的路径: ${missing.join(", ")}` : null;
+	return missing.length ? `missing paths: ${missing.join(", ")}` : null;
 });
 
-check("所有已发现技能 frontmatter 是合法 YAML 且无重名", () => {
+check("all discovered skill frontmatter is valid YAML with unique names", () => {
 	// Roots: `skills/` plus `skills-optional/`. The latter was previously unscanned —
 	// which is how two skills with invalid frontmatter stayed invisible to this test.
 	const roots = [path.join(AGENT_DIR, "skills"), path.join(AGENT_DIR, "skills-optional")];
@@ -200,7 +200,7 @@ check("所有已发现技能 frontmatter 是合法 YAML 且无重名", () => {
 	try {
 		YAML = createRequire(path.join(NPM_DIR, "package.json"))("yaml");
 	} catch {
-		return { warn: "yaml 包不可用，无法真解析 SKILL.md frontmatter" };
+		return { warn: "the yaml package is unavailable; SKILL.md frontmatter cannot be parsed" };
 	}
 	const found = new Map();
 	const bad = [];
@@ -242,7 +242,7 @@ check("所有已发现技能 frontmatter 是合法 YAML 且无重名", () => {
 			else if (entry.name === "SKILL.md") {
 				const raw = fs.readFileSync(p, "utf8");
 				const fm = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-				if (!fm) return bad.push(`${p}: 无 frontmatter`);
+				if (!fm) return bad.push(`${p}: no frontmatter`);
 				// A real YAML parse, not regex field-extraction. A plain (unquoted) scalar
 				// containing ": " makes the whole frontmatter invalid — "Nested mappings
 				// are not allowed in compact mappings" — and the skill silently fails to
@@ -252,16 +252,16 @@ check("所有已发现技能 frontmatter 是合法 YAML 且无重名", () => {
 				try {
 					doc = YAML.parse(fm[1]);
 				} catch (error) {
-					return bad.push(`${p}: frontmatter 不是合法 YAML — ${String(error?.message ?? error).split("\n")[0]}`);
+					return bad.push(`${p}: frontmatter is not valid YAML — ${String(error?.message ?? error).split("\n")[0]}`);
 				}
-				if (!doc || typeof doc !== "object" || Array.isArray(doc)) return bad.push(`${p}: frontmatter 解析结果不是映射`);
-				if (typeof doc.name !== "string" || !doc.name.trim()) return bad.push(`${p}: 缺 name`);
+				if (!doc || typeof doc !== "object" || Array.isArray(doc)) return bad.push(`${p}: frontmatter did not parse to a mapping`);
+				if (typeof doc.name !== "string" || !doc.name.trim()) return bad.push(`${p}: missing name`);
 				const name = doc.name.trim();
 				if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name) || name.length > 64)
-					bad.push(`${p}: name "${name}" 违反 Agent Skills 规范`);
-				if (typeof doc.description !== "string" || !doc.description.trim()) bad.push(`${p}: 缺 description`);
-				else if (doc.description.length > 1024) bad.push(`${p}: description ${doc.description.length} 字符 > 1024`);
-				if (found.has(name)) bad.push(`技能名 "${name}" 冲突: ${found.get(name)} 与 ${p}`);
+					bad.push(`${p}: name "${name}" violates the Agent Skills spec`);
+				if (typeof doc.description !== "string" || !doc.description.trim()) bad.push(`${p}: missing description`);
+				else if (doc.description.length > 1024) bad.push(`${p}: description is ${doc.description.length} characters > 1024`);
+				if (found.has(name)) bad.push(`skill name "${name}" collides: ${found.get(name)} and ${p}`);
 				else found.set(name, p);
 			}
 		}
@@ -271,20 +271,20 @@ check("所有已发现技能 frontmatter 是合法 YAML 且无重名", () => {
 });
 
 // ── the host package must be natively resolvable ───────────────────────
-group = "宿主包";
+group = "host package";
 const HOST_PKG = "@earendil-works/pi-coding-agent";
 const subagentsDir = path.join(MODULE_DIR, "pi-subagents");
 let globalPiVersion = null;
 
-check("全局 pi 包可定位并读出版本", () => {
+check("the global pi package is locatable and its version readable", () => {
 	const guess = path.join(os.homedir(), ".local", "lib", "node_modules", HOST_PKG, "package.json");
-	if (!exists(guess)) return `未找到 ${guess}`;
+	if (!exists(guess)) return `not found: ${guess}`;
 	globalPiVersion = readJson(guess).version;
 	return null;
 });
 
-check(`从 pi-subagents 位置可原生解析 ${HOST_PKG}`, () => {
-	if (!exists(subagentsDir)) return "pi-subagents 未安装";
+check(`native resolution of ${HOST_PKG} from the pi-subagents location`, () => {
+	if (!exists(subagentsDir)) return "pi-subagents is not installed";
 	try {
 		execFileSync(
 			process.execPath,
@@ -294,35 +294,35 @@ check(`从 pi-subagents 位置可原生解析 ${HOST_PKG}`, () => {
 		return null;
 	} catch (error) {
 		const detail = String(error?.stderr ?? error?.message ?? error).split("\n").find((l) => l.includes("Cannot find") || l.includes("Error")) ?? "";
-		return `原生解析失败 → 所有「前台/进程内」子代理启动都会挂。修复见 README「还原本配置 · 1」。${detail ? ` (${detail.trim()})` : ""}`;
+		return `native resolution failed → every foreground/in-process subagent would fail to start. See README "Restoring this configuration · 1".${detail ? ` (${detail.trim()})` : ""}`;
 	}
 });
 
-check("已解析的宿主包入口文件真实存在", () => {
+check("the resolved host package entry file exists", () => {
 	const dir = path.join(MODULE_DIR, HOST_PKG);
-	if (!exists(dir)) return `${dir} 不存在（符号链接或副本缺失）`;
+	if (!exists(dir)) return `${dir} does not exist (missing symlink or copy)`;
 	const manifest = readJson(path.join(dir, "package.json"));
 	const entry = manifest?.exports?.["."]?.import ?? manifest?.exports?.["."]?.default ?? manifest?.main;
-	if (!entry) return "package.json 里找不到 exports['.'] / main";
+	if (!entry) return "package.json has no exports['.'] / main";
 	const target = path.resolve(dir, entry);
-	return exists(target) ? null : `manifest 指向 ${entry}，但该文件不存在（别名/解析会在这里失败）`;
+	return exists(target) ? null : `manifest points at ${entry}, which does not exist (aliasing/resolution fails here)`;
 });
 
-check("安装的宿主包版本与全局 pi 一致（无陈旧副本）", () => {
+check("the installed host package version matches the global pi (no stale copy)", () => {
 	const dir = path.join(MODULE_DIR, HOST_PKG);
 	if (!exists(dir) || !globalPiVersion) return null;
 	const v = readJson(path.join(dir, "package.json")).version;
-	return v === globalPiVersion ? null : `node_modules 里是 ${v}，全局是 ${globalPiVersion} → 子会话会跑与宿主不同版本的 pi`;
+	return v === globalPiVersion ? null : `node_modules has ${v} while the global version is ${globalPiVersion} → child sessions would run a different pi`;
 });
 
 // ── subagent config semantics ─────────────────────────────────────────
-group = "子代理配置";
-check("defaultSubagentContext 取值合法", () => {
+group = "subagent configuration";
+check("defaultSubagentContext has a valid value", () => {
 	const v = subagentConfig?.defaultSubagentContext;
-	return v === undefined || v === "fresh" || v === "fork" ? null : `非法值 "${v}"`;
+	return v === undefined || v === "fresh" || v === "fork" ? null : `invalid value "${v}"`;
 });
 
-check("没有「配了却永远走不到」的 agent defaultContext", () => {
+check("no agent defaultContext is shadowed and therefore dead", () => {
 	// fork-context.js: `defaultSubagentContext ?? agentDefaultContext ?? "fresh"` —
 	// the config value wins, so an agent-level fork default is dead config.
 	if (!subagentConfig?.defaultSubagentContext) return null;
@@ -337,11 +337,11 @@ check("没有「配了却永远走不到」的 agent defaultContext", () => {
 			shadowed.push(`${file}(${dc})`);
 	}
 	return shadowed.length
-		? `被 config 的 "${subagentConfig.defaultSubagentContext}" 覆盖，属死声明: ${shadowed.join(", ")}`
+		? `overridden by config's "${subagentConfig.defaultSubagentContext}" and therefore dead: ${shadowed.join(", ")}`
 		: null;
 });
 
-check("maxSubagentSpawnsPerSession / 超时是正整数", () => {
+check("maxSubagentSpawnsPerSession and timeouts are positive integers", () => {
 	const bad = [];
 	for (const key of ["maxSubagentSpawnsPerSession", "toolTimeoutMs", "checkpointBeforeDeadlineMs"]) {
 		const v = subagentConfig?.[key];
@@ -351,11 +351,11 @@ check("maxSubagentSpawnsPerSession / 超时是正整数", () => {
 	return bad.length ? bad.join(", ") : null;
 });
 
-check("checkpointBeforeDeadlineMs 小于最短运行时限（否则永不触发）", () => {
+check("checkpointBeforeDeadlineMs is below the shortest run deadline (otherwise it never fires)", () => {
 	const checkpoint = subagentConfig?.checkpointBeforeDeadlineMs;
 	if (!Number.isInteger(checkpoint) || checkpoint <= 0) return null;
-	// run deadline 优先级：调用级 > agent frontmatter timeoutMs > config timeoutMs > 内置 30min。
-	// 静态可知的下限 = min(agents/*.md 的 timeoutMs, config.timeoutMs, 1_800_000)
+	// Run deadline precedence: call level > agent frontmatter timeoutMs > config timeoutMs > built-in 30 min.
+	// Statically known lower bound = min(timeoutMs in agents/*.md, config.timeoutMs, 1_800_000)
 	const deadlines = [subagentConfig?.timeoutMs, 1_800_000].filter((v) => Number.isInteger(v) && v > 0);
 	const dir = path.join(AGENT_DIR, "agents");
 	if (exists(dir)) {
@@ -368,15 +368,15 @@ check("checkpointBeforeDeadlineMs 小于最短运行时限（否则永不触发�
 	}
 	const minDeadline = Math.min(...deadlines);
 	// subagent-runner.js: checkpointDelayMs = remaining - checkpointBeforeDeadlineMs，
-	// 结果 <1000 时静默不挂定时器 —— 即 checkpoint 与最短时限相撞等于关掉收尾 steer。
+	// A result <1000 schedules no timer silently: a checkpoint colliding with the shortest deadline disables the closing steer.
 	return checkpoint <= minDeadline - 1000
 		? null
-		: `checkpointBeforeDeadlineMs=${checkpoint} 撞上最短时限 ${minDeadline}（差 <1000ms 时定时器静默不挂）→ 子代理死前收不到收尾 steer`;
+		: `checkpointBeforeDeadlineMs=${checkpoint} collides with the shortest deadline ${minDeadline} (a gap <1000ms schedules no timer) → a subagent never receives the closing steer`;
 });
 
 // ── package peer compatibility ────────────────────────────────────────
-group = "扩展包";
-check("已装包的 @earendil-works/pi-* peer 范围与宿主兼容", () => {
+group = "extension packages";
+check("installed packages' @earendil-works/pi-* peer ranges are compatible with the host", () => {
 	if (!globalPiVersion) return null;
 	const bad = [];
 	const packageDirs = [];
@@ -400,18 +400,18 @@ check("已装包的 @earendil-works/pi-* peer 范围与宿主兼容", () => {
 		for (const [name, range] of Object.entries(manifest.peerDependencies ?? {})) {
 			if (!name.startsWith("@earendil-works/pi-")) continue;
 			if (satisfies(globalPiVersion, range) === false)
-				bad.push(`${manifest.name}@${manifest.version} 要求 ${name} "${range}"，宿主是 ${globalPiVersion}`);
+				bad.push(`${manifest.name}@${manifest.version} requires ${name} "${range}" while the host is ${globalPiVersion}`);
 		}
 	}
 	if (bad.length) {
 		return {
-			warn: `${bad.join("; ")} — 不阻塞运行（pi 用 --legacy-peer-deps），但它意味着该包声明的兼容区间已不覆盖当前 pi`,
+			warn: `${bad.join("; ")} — does not block execution (pi uses --legacy-peer-deps), but the declared compatibility range no longer covers the current pi`,
 		};
 	}
 	return null;
 });
 
-check("node_modules 里没有空的 @scope 残骸", () => {
+check("no empty @scope leftovers in node_modules", () => {
 	if (!exists(MODULE_DIR)) return null;
 	const empty = fs
 		.readdirSync(MODULE_DIR)
@@ -420,13 +420,13 @@ check("node_modules 里没有空的 @scope 残骸", () => {
 			const dir = path.join(MODULE_DIR, e);
 			return fs.statSync(dir).isDirectory() && fs.readdirSync(dir).length === 0;
 		});
-	if (empty.length) return { warn: `${empty.join(", ")} — npm 剪枝残骸，无害但会误导排查` };
+	if (empty.length) return { warn: `${empty.join(", ")} — npm pruning leftovers, harmless but misleading during diagnosis` };
 	return null;
 });
 
 // ── extensions discoverable ───────────────────────────────────────────
-group = "扩展";
-check("extensions/ 下每个目录都有可用入口", () => {
+group = "extensions";
+check("every directory under extensions/ has a usable entry point", () => {
 	const dir = path.join(AGENT_DIR, "extensions");
 	if (!exists(dir)) return null;
 	const bad = [];
@@ -445,14 +445,14 @@ check("extensions/ 下每个目录都有可用入口", () => {
 		const hasEntry = top.includes("index.ts") || top.includes("index.js") || top.includes("package.json");
 		if (!hasEntry) bad.push(entry.name);
 	}
-	return bad.length ? `有源码但无 index.ts/index.js/package.json: ${bad.join(", ")}` : null;
+	return bad.length ? `sources present but no index.ts/index.js/package.json: ${bad.join(", ")}` : null;
 });
 
 // ── the extension's own unit tests ────────────────────────────────────
-group = "单元测试";
-check("usage-policy.js 的 node:test 套件通过", () => {
+group = "unit tests";
+check("the node:test suite for usage-policy.js passes", () => {
 	const suite = path.join(AGENT_DIR, "extensions", "productivity", "usage-policy.test.mjs");
-	if (!exists(suite)) return `缺少测试文件 ${suite}`;
+	if (!exists(suite)) return `missing test file ${suite}`;
 	try {
 		execFileSync(
 			process.execPath,
@@ -463,7 +463,7 @@ check("usage-policy.js 的 node:test 套件通过", () => {
 	} catch (error) {
 		const out = String(error?.stdout ?? "") + String(error?.stderr ?? "");
 		const failed = out.match(/^# fail \d+$/m)?.[0] ?? out.split("\n").filter((l) => l.startsWith("✖")).slice(0, 3).join(" | ");
-		return `测试未通过: ${failed}`;
+		return `tests failed: ${failed}`;
 	}
 });
 

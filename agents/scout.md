@@ -1,7 +1,7 @@
 ---
 name: scout
 description: Rapid reconnaissance of directory structures and codebases, returning compressed context for handoff to other agents
-aliases: explore, recon, code-scout, 探索, 侦查
+aliases: explore, recon, code-scout
 tools: read, grep, find, ls, bash, write, contact_supervisor
 thinking: low
 systemPromptMode: replace

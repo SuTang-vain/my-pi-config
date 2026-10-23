@@ -1,6 +1,6 @@
 ---
 name: herdr
-description: "Interact with an independent agent (herdr terminal workspace): use when the user explicitly mentions herdr, or asks to open a separate, persistent, watchable agent session (开一个会话/独立会话/围观/让它自己干). For one-shot subtasks whose results must flow back to the orchestrator, use pi-subagents instead — this skill covers working *alongside* an agent, not *dispatching* one."
+description: "Interact with an independent agent (herdr terminal workspace): use when the user explicitly mentions herdr, or asks to open a separate, persistent, watchable agent session For one-shot subtasks whose results must flow back to the orchestrator, use pi-subagents instead — this skill covers working *alongside* an agent, not *dispatching* one."
 ---
 
 # Herdr: working alongside independent agents

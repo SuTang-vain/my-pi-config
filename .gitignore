@@ -1,4 +1,4 @@
-# 永不入库（防御性；本仓库发布时本就不含这些文件）
+# Never committed (defensive: a published snapshot does not contain these files)
 auth.json
 models-store.json
 sessions/

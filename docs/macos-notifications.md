@@ -1,126 +1,129 @@
-# macOS 通知设置方法（herdr / Ghostty 场景）
+# macOS notification setup (herdr + Ghostty)
 
-> 这是**本机桌面通知链路的完整设置方法**，不是 pi 专属功能说明。
-> 适用：在 herdr 里跑任意 agent（pi / claude / kimi …），希望"跑完/需要输入"时弹出系统通知，且**点通知能跳回对应 pane**。
-> 最后验证：2026-10-23，herdr 0.9.5 / Ghostty 1.3.1 / macOS 26 (Tahoe)。
+Scope: this page documents the desktop-notification chain for agents running inside herdr
+(pi, claude, kimi, ...) on macOS: a notification when a run finishes or needs input, and a
+click that returns to the corresponding pane.
 
-## 1. 结论：四条通道，只有一条能点得动
+Verified against herdr 0.9.5, Ghostty 1.3.1 and macOS 26 on 2026-10-23.
 
-| 通道 | 通知归属 | 点击行为 | 判定 |
+## 1. Which delivery channel works
+
+| Channel | Notification identity | Click behaviour | Verdict |
 |---|---|---|---|
-| **herdr 插件 + `HerdrNotify.app`** | **herdr**（真实 App 身份，独立 bundle） | 插件 `-execute` + 我们补的 `open -b` | ✅ 采用 |
-| Ghostty OSC 777 | Ghostty（最原生） | 系统自动聚焦窗口 | ❌ 在 herdr 里不可达：pane 的 OSC 被 herdr 的 VT 吃掉，不转发外层终端 |
-| herdr `[ui.toast] delivery="system"` | 脚本编辑器（osascript 回落，brew terminal-notifier 在 macOS 26 拿不到授权） | 打开脚本编辑器，不跳终端 | ❌ |
-| herdr `[ui.toast] delivery="terminal"` | — | — | ❌ herdr 只发 OSC 99，Ghostty 解析器没有 `99`（只认 OSC 9 / OSC 777） |
+| herdr plugin `dot.terminal-notifier` (bundled `HerdrNotify.app`) | herdr — a registered app bundle | `-execute` plus our `open -b` addition | **Adopted** |
+| Ghostty OSC 777 | Ghostty (the most native option) | terminal app is raised by the OS | Not reachable inside herdr: the pane's escape sequences are consumed by herdr's VT parser and are not forwarded to the outer terminal |
+| herdr `[ui.toast] delivery="system"` | Script Editor (osascript fallback; the Homebrew `terminal-notifier` cannot obtain notification permission on macOS 26) | opens Script Editor, not the terminal | Rejected |
+| herdr `[ui.toast] delivery="terminal"` | — | — | Rejected: herdr emits OSC 99 only, which Ghostty does not parse (it handles OSC 9 and OSC 777) |
 
-**为什么插件是"最原生"的那个**：macOS 通知的左图标与点开行为由**发通知的 App 的身份**决定。只有落成一个注册过的 `.app`（bundle id `codes.dot.herdr-notify`，`LSUIElement`）才能拿到真实归属；`osascript` 永远是「脚本编辑器」。
+The plugin is the only option that produces a real app identity, because macOS attributes the
+left icon and the click target to the application that posts the notification.
 
-## 2. 一次性安装（约 3 分钟）
+## 2. One-time installation
 
 ```bash
-# 1) 装插件（会跑 [[build]]：lsregister 注册 notifier app，必要时 adhoc 重签）
+# 1) Install the plugin. Its [[build]] step registers the notifier app with Launch Services
+#    and re-signs it ad hoc only when the existing signature is invalid.
 herdr plugin install dot/herdr-terminal-notifier --yes
 
-# 2) 写配置（模板在 ~/.pi/agent/scripts/herdr-notify.config.env）
+# 2) Write the plugin configuration from the template in this repository.
 mkdir -p "$(herdr plugin config-dir dot.terminal-notifier)"
-cp ~/.pi/agent/scripts/herdr-notify.config.env \
+cp scripts/herdr-notify.config.env \
    "$(herdr plugin config-dir dot.terminal-notifier)/config.env"
 
-# 3) 关掉 herdr 自己的重复通道，避免双弹/双响
-#    ~/.config/herdr/config.toml 追加：
+# 3) Disable herdr's own channel so notifications and sounds are not doubled.
+#    Append to ~/.config/herdr/config.toml:
 #      [ui.toast]
 #      delivery = "off"
 #      [ui.sound]
 #      enabled = false
 herdr config check && herdr server reload-config
 
-# 4) 【必须人工】系统设置 → 通知 → herdr → 允许通知 + 横幅/提醒
+# 4) Manual step: System Settings -> Notifications -> herdr -> Allow Notifications
+#    (Banners or Alerts). This grant cannot be scripted.
 open "x-apple.systempreferences:com.apple.Notifications-Settings.extension"
 ```
 
-第 4 步不可脚本化（TCC 授权只能人来点）。**跳过它的表现极具误导性**：`terminal-notifier` 返回 `0`、插件日志 `exit=0`，但屏幕上什么都没有。
+Skipping step 4 is the most common failure. `terminal-notifier` still exits 0 and the plugin log
+still reports success, while nothing appears on screen.
 
-## 3. 验证三板斧
+## 3. Verification
 
 ```bash
-# a) 插件是否被事件驱动、是否报错
-herdr plugin log list | jq -r '.result.logs[-5:][] | "\(.log_id) exit=\(.exit_code) \(.stderr//"")"'
+# a) Did the plugin receive events, and did it fail?
+herdr plugin log list | jq -r '.result.logs[-5:][] | "\(.log_id) exit=\(.exit_code) \(.stderr // "")"'
 
-# b) 通知到底有没有被展示（最关键，能区分"没发"和"没权限"）
+# b) Was the notification presented? This distinguishes "not sent" from "not permitted".
 log show --last 5m --predicate 'eventMessage CONTAINS "herdr-notify"' --info \
   | grep -E "Presenting|Ignoring .* not visible"
 
-# c) 决策轨迹：config.env 里设 DEBUG=1 后
+# c) Decision trace: set DEBUG=1 in config.env, then read
 cat ~/.local/state/herdr/plugins/dot.terminal-notifier/last-event.json
 ```
 
-判读：
-
-| 日志 | 含义 |
+| Log line | Meaning |
 |---|---|
-| `Presenting <NotificationRecord app:"codes.dot.herdr-notify"…>` | ✅ 已展示 |
-| `Ignoring … from codes.dot.herdr-notify, not visible` | ❌ 未授权（回第 2 步第 4 条） |
-| `decision=notify title=…` | ✅ 触发了 |
-| `drop reason=focused ws=… frontmost=com.mitchellh.ghostty` | ✅ 有意静音（你正在看这个 workspace 且终端在前台） |
-| `drop reason=trigger status=… not in [...]` | 状态不在 `TRIGGER_STATUSES`，检查是否漏了 `done`/`idle` |
-| 完全没有新日志 | 事件没到插件：pane 状态没变化，或插件被 disable |
-| Script Editor 也弹了一条（双弹） | 老 pi 进程仍在用改前的 `notify.ts`（`agent_end` + osascript 无 herdr 守卫）。扩展是**启动时读文件**，改完不 `/reload` 就一直用内存里的旧代码 |
+| `Presenting <NotificationRecord app:"codes.dot.herdr-notify">` | presented to the user |
+| `Ignoring ... from codes.dot.herdr-notify, not visible` | not permitted — return to step 4 |
+| `decision=notify title=...` | the event triggered a notification |
+| `drop reason=focused ws=... frontmost=...` | suppressed on purpose: the workspace is focused and the terminal is frontmost |
+| `drop reason=trigger status=... not in [...]` | the status is outside `TRIGGER_STATUSES` |
+| no new log entry at all | no event reached the plugin: the pane status did not change, or the plugin is disabled |
 
-## 4. 触发与抖动控制（状态词表是坑）
+## 4. Triggers and noise control
 
-herdr 的"完成"有**两个词**，实测结论：
+herdr uses two words for a completion:
 
-- 后台 workspace 里完成 → `agent_status="done"`
-- **当前聚焦的 workspace** 里完成 → `agent_status="idle"`（herdr 视为已看过）
-- `agent focus` 把 done 变 idle，且**不再发** `agent_status_changed` → 点通知不会自激
+- a completion in a background workspace is reported as `done`;
+- a completion in the focused workspace is reported as `idle` (treated as already seen);
+- `agent focus` turns `done` into `idle` without emitting `agent_status_changed`, so clicking a
+  notification does not retrigger one.
 
-所以 `TRIGGER_STATUSES` 必须 `"blocked done idle"`：只写 `done` 会漏「同一 workspace 内切到别的 App」，只写 `idle` 会漏后台 workspace。真正的降噪靠 `SUPPRESS_FOCUSED=1`（仅当 workspace 聚焦**且**终端是前台 App 时静音，用 `lsappinfo` 判前台，判不出就照发）。
+`TRIGGER_STATUSES` must therefore list `blocked done idle`. Listing `done` alone misses the case
+"same workspace, user switched to another application"; listing `idle` alone misses background
+workspaces. Noise is then handled by `SUPPRESS_FOCUSED=1`, which stays silent only when the
+event's workspace is the focused one **and** the terminal is the frontmost application
+(determined with `lsappinfo`; if detection fails, the notification is delivered).
 
-## 5. 点击跳转（插件的缺口）
+## 5. Click-to-jump
 
-插件只把 `CLICK_COMMAND` 塞进 `terminal-notifier -execute`，**不传 `-activate`**，所以默认点通知不会把终端拉前台（看起来"点了没反应"）。补法：
+The plugin passes `CLICK_COMMAND` to `terminal-notifier -execute` and never passes `-activate`,
+so a click does not raise the terminal by itself. Append an explicit activation:
 
 ```env
 CLICK_COMMAND="agent focus {pane}; open -b com.mitchellh.ghostty"
 ```
 
-顺序：先 herdr 选中目标 pane，再激活窗口 —— 窗口上来时已经在正确 pane。若换终端，改 bundle id（`mdls -name kMDCFBundleIdentifier /Applications/<App>.app`）。实测：点击后 Ghostty 前置且 herdr 切到目标 workspace/pane。
+The pane is selected first and the terminal is raised afterwards, so the window appears with the
+target pane already focused. Replace the bundle identifier when using another terminal
+(`mdls -name kMDItemCFBundleIdentifier /Applications/<App>.app`).
 
-## 5.5 双弹排障（实测踩过）
-
-`notify.ts` 改成 `HERDR_ENV=1` 早退后，**已经在跑的 pi 会话不会自动变**——它们内存里是旧代码，每次 settle 仍会 osascript 弹一条「脚本编辑器」。
-
-```bash
-# 谁在发：看最近半小时的展示记录
-log show --last 30m --predicate 'eventMessage CONTAINS "Presenting <NotificationRecord"' --info \
-  | grep -oE 'app:"[^"]*"' | sort | uniq -c
-#   codes.dot.herdr-notify (插件，应为唯一来源)
-#   com.apple.ScriptEditor2 (旧 notify.ts 的 osascript) ← 双弹元凶
-```
-
-处置：在每个在跑的 pi 会话里执行 `/reload`（同时也会加载阻塞桥）；不想逐个重载可临时关掉 系统设置→通知→脚本编辑器，立即静音。
-
-## 6. 回滚
+## 6. Rollback
 
 ```bash
 herdr plugin uninstall dot.terminal-notifier
-# 恢复 herdr 自弹（可选）：config.toml 里 [ui.toast] delivery = "system" 或 "herdr"
-#   （在 macOS 26 上 "system" 实际由 osascript 显示为「脚本编辑器」）
+# Restore herdr's own notifications if wanted: [ui.toast] delivery = "system" (macOS 26 renders
+# these as Script Editor) or "herdr" (in-app toast).
 ```
 
-`notify.ts`（pi 侧兜底，仅在 herdr 之外生效）不受影响；它靠 `HERDR_ENV=1` 自抑制。
+## 7. Duplicate notifications
 
-## 7. 归属边界
+If both the plugin and a pi-side fallback notify, the cause is a running pi process that loaded
+the extension before it was changed. Extensions are read from disk at startup, so a process
+started earlier keeps executing the old code until `/reload` or restart.
 
-| 内容 | 归属 | 是否可版本化 |
+```bash
+log show --last 30m --predicate 'eventMessage CONTAINS "Presenting <NotificationRecord"' --info \
+  | grep -oE 'app:"[^"]*"' | sort | uniq -c
+#   codes.dot.herdr-notify      the plugin (should be the only source)
+#   com.apple.ScriptEditor2     the old osascript path from notify.ts
+```
+
+## 8. Ownership boundaries
+
+| Item | Owner | Versionable |
 |---|---|---|
-| 插件本体、`HerdrNotify.app` | `herdr plugin`（`~/.config/herdr/plugins/github-installations/`，herdr 管理） | 由 `herdr plugin install` 恢复 |
-| 插件配置 `config.env` | `~/.config/herdr/plugins/config/dot.terminal-notifier/`（herdr 管理的目录，内容归用户） | 模板在 `~/.pi/agent/scripts/herdr-notify.config.env` |
-| herdr 主配置 `[ui.toast]`/`[ui.sound]` | `~/.config/herdr/config.toml`（含主题等无关项，herdr 无 include 机制） | 文档记录，未纳管 |
-| 通知授权（TCC） | macOS 系统设置，按 bundle id + 签名 CDHash | ❌ 不可脚本化；adhoc 重签会重置 |
-| pi 侧兜底 `notify.ts` + 阻塞桥 | 本仓 `extensions/` | ✅ 已随本仓发布 |
-
-## 8. 相关文档
-
-- 平台细节与否决项：`~/.pi/agent/docs-notes/pi-config-facts.md` 第 5 节
-- 一键安装/自检：`~/.pi/agent/scripts/setup-macos-notifications.sh`
+| Plugin and `HerdrNotify.app` | `herdr plugin` (under `~/.config/herdr/plugins/github-installations/`) | restored by `herdr plugin install` |
+| Plugin configuration `config.env` | `~/.config/herdr/plugins/config/dot.terminal-notifier/` | template in this repository |
+| herdr keys `[ui.toast]` / `[ui.sound]` | `~/.config/herdr/config.toml` (also holds themes) | documented here, not managed |
+| Notification permission (TCC) | System Settings, keyed by bundle id and signature CDHash | not scriptable; an ad-hoc re-sign resets it |
+| pi-side fallback `notify.ts` and the blocked-state bridge | this repository (`extensions/`) | shipped with this repository |

@@ -62,11 +62,11 @@ test("is total: no args and an empty object never inject; a bare wrapper stays q
 
 test("an interval report without spend evidence stays silent (fail-quiet)", () => {
 	// 2026-10-11: the interval clause became subordinate to cost. Omitting costSinceInject
-	// must not produce a report — a cheap session gets no turn-数打卡.
+	// must not produce a report — a cheap session gets no turn-based report.
 	assert.deepEqual(reasonsOf({ turnsSinceInject: 999 }), []);
 	assert.deepEqual(reasonsOf({ turnsSinceInject: 999, costSinceInject: 0.049 }), [], "just below the threshold");
 	assert.deepEqual(reasonsOf({ turnsSinceInject: 999, costSinceInject: 0.05 }), [
-		`间隔 ${DEFAULT_POLICY.everyTurns} 轮·新增 $0.05`,
+		`${DEFAULT_POLICY.everyTurns} turns · +$0.05 spend`,
 	]);
 	// Cost alone, without the turn gap, is the cost-band clause's job, not this one's.
 	assert.deepEqual(reasonsOf({ turnsSinceInject: 1, costSinceInject: 5 }), []);
@@ -91,7 +91,7 @@ test("the everyTurns gap is a trigger only together with new spend", () => {
 	assert.equal(shouldInject(input({ turnsSinceInject: DEFAULT_POLICY.everyTurns, ...spend })).inject, true);
 	assert.equal(shouldInject(input({ turnsSinceInject: DEFAULT_POLICY.everyTurns - 1, ...spend })).inject, false);
 	assert.ok(
-		reasonsOf({ turnsSinceInject: DEFAULT_POLICY.everyTurns, ...spend })[0].includes(`${DEFAULT_POLICY.everyTurns} 轮·新增 $0.10`),
+		reasonsOf({ turnsSinceInject: DEFAULT_POLICY.everyTurns, ...spend })[0].includes(`${DEFAULT_POLICY.everyTurns} turns · +$0.10 spend`),
 	);
 });
 
@@ -99,9 +99,9 @@ test("interactive defaults to true, so callers that omit it keep the old behavio
 	// Regression guard for the headless fix: omitting `interactive` must not silence the
 	// interval clause for existing callers that do supply spend evidence.
 	assert.equal(input({ turnsSinceInject: 999 }).interactive, undefined);
-	assert.deepEqual(reasonsOf({ turnsSinceInject: 999, costSinceInject: 0.1 }), [`间隔 ${DEFAULT_POLICY.everyTurns} 轮·新增 $0.10`]);
+	assert.deepEqual(reasonsOf({ turnsSinceInject: 999, costSinceInject: 0.1 }), [`${DEFAULT_POLICY.everyTurns} turns · +$0.10 spend`]);
 	assert.deepEqual(reasonsOf({ turnsSinceInject: 999, costSinceInject: 0.1, interactive: true }), [
-		`间隔 ${DEFAULT_POLICY.everyTurns} 轮·新增 $0.10`,
+		`${DEFAULT_POLICY.everyTurns} turns · +$0.10 spend`,
 	]);
 });
 
@@ -112,10 +112,10 @@ test("non-interactive (headless) suppresses the interval clause only", () => {
 	// that its context is about to blow up or that its prefix was re-billed in full.
 	const alert = { turnsSinceInject: 999, interactive: false };
 	assert.deepEqual(reasonsOf({ ...alert, prev: { ctxTokens: 299_000 }, cur: { ctxTokens: 301_000 } }), [
-		"ctx 越过 300k（里程碑后适合 /compact）",
+		"ctx crossed 300k (a good point to /compact after a milestone)",
 	]);
-	assert.deepEqual(reasonsOf({ ...alert, prev: { costUsd: 0.4 }, cur: { costUsd: 0.6 } }), ["成本 0→1 档（$0.50）"]);
-	assert.deepEqual(reasonsOf({ ...alert, cur: { turnCacheHitPct: 0 } }), ["本轮 cache 全 miss（前缀被完整重计费）"]);
+	assert.deepEqual(reasonsOf({ ...alert, prev: { costUsd: 0.4 }, cur: { costUsd: 0.6 } }), ["cost tier 0→1 ($0.50)"]);
+	assert.deepEqual(reasonsOf({ ...alert, cur: { turnCacheHitPct: 0 } }), ["cache fully missed this turn (prefix re-billed in full)"]);
 });
 
 // ── cache ─────────────────────────────────────────────────────────────
@@ -135,13 +135,13 @@ test("the cache threshold is a strict lower bound (exactly cacheMissPct is not a
 test("crossing the warn tier fires once", () => {
 	assert.deepEqual(
 		reasonsOf({ prev: { ctxTokens: 149_000 }, cur: { ctxTokens: 151_000 }, turnsSinceInject: DEFAULT_POLICY.minGapForCtxWarn }),
-		["ctx 越过 150k"],
+		["ctx crossed 150k"],
 	);
 });
 
 test("crossing the alert tier fires the alert wording instead of the warn wording", () => {
 	assert.deepEqual(reasonsOf({ prev: { ctxTokens: 299_000 }, cur: { ctxTokens: 301_000 } }), [
-		"ctx 越过 300k（里程碑后适合 /compact）",
+		"ctx crossed 300k (a good point to /compact after a milestone)",
 	]);
 });
 
@@ -157,7 +157,7 @@ test("sitting exactly on a tier is not a crossing (prev < t is strict)", () => {
 	const gap = { turnsSinceInject: DEFAULT_POLICY.minGapForCtxWarn };
 	assert.deepEqual(reasonsOf({ ...gap, prev: { ctxTokens: 150_000 }, cur: { ctxTokens: 150_000 } }), []);
 	// ...but landing exactly on it from below is.
-	assert.deepEqual(reasonsOf({ ...gap, prev: { ctxTokens: 149_999 }, cur: { ctxTokens: 150_000 } }), ["ctx 越过 150k"]);
+	assert.deepEqual(reasonsOf({ ...gap, prev: { ctxTokens: 149_999 }, cur: { ctxTokens: 150_000 } }), ["ctx crossed 150k"]);
 });
 
 test("the minGap applies to the warn tier only — an alert ignores it", () => {
@@ -166,19 +166,19 @@ test("the minGap applies to the warn tier only — an alert ignores it", () => {
 	const seed = { turnsSinceInject: 1 };
 	assert.deepEqual(reasonsOf({ ...seed, prev: { ctxTokens: 149_000 }, cur: { ctxTokens: 151_000 } }), []);
 	assert.deepEqual(reasonsOf({ ...seed, prev: { ctxTokens: 299_000 }, cur: { ctxTokens: 301_000 } }), [
-		"ctx 越过 300k（里程碑后适合 /compact）",
+		"ctx crossed 300k (a good point to /compact after a milestone)",
 	]);
 });
 
 test("a large window falls back to the absolute tier, a small one uses the share tier", () => {
 	const gap = { turnsSinceInject: DEFAULT_POLICY.minGapForCtxWarn };
 	// 1M window: 50% would be 500k, so the 150k absolute tier must win.
-	assert.deepEqual(reasonsOf({ ...gap, prev: { ctxTokens: 0 }, cur: { ctxTokens: 150_000 } }), ["ctx 越过 150k"]);
+	assert.deepEqual(reasonsOf({ ...gap, prev: { ctxTokens: 0 }, cur: { ctxTokens: 150_000 } }), ["ctx crossed 150k"]);
 	assert.deepEqual(reasonsOf({ ...gap, prev: { ctxTokens: 0 }, cur: { ctxTokens: 149_000 } }), []);
 	// 128k window: 50% is 64k, which is earlier than the absolute tier.
 	assert.deepEqual(
 		reasonsOf({ ...gap, prev: { ctxTokens: 63_000 }, cur: { ctxTokens: 64_000, contextWindow: 128_000 } }),
-		["ctx 越过 64k"],
+		["ctx crossed 64k"],
 	);
 });
 
@@ -189,7 +189,7 @@ test("a ctx warn arriving too soon after the last injection is suppressed", () =
 	// one more turn of gap and it goes through (minGapForCtxWarn === 2)
 	assert.deepEqual(
 		reasonsOf({ prev: { ctxTokens: 149_000 }, cur: { ctxTokens: 151_000 }, turnsSinceInject: DEFAULT_POLICY.minGapForCtxWarn }),
-		["ctx 越过 150k"],
+		["ctx crossed 150k"],
 	);
 });
 
@@ -204,15 +204,15 @@ test("cost reports once per step band, not once ever", () => {
 
 test("a multi-band jump is reported once, not once per band", () => {
 	const r = reasonsOf({ prev: { costUsd: 0.0 }, cur: { costUsd: 2.6 } });
-	assert.equal(r.filter((x) => x.startsWith("成本")).length, 1);
+	assert.equal(r.filter((x) => x.startsWith("cost tier")).length, 1);
 });
 
 // ── policy lock ───────────────────────────────────────────────────────
 
 test("DEFAULT_POLICY is unchanged (thresholds are a deliberate tuning, not incidental)", () => {
 	assert.deepEqual(DEFAULT_POLICY, {
-		everyTurns: 25, // 2026-10-11: 8 → 25（间隔条款降级为从属条件）
-		minCostDeltaUsd: 0.05, // 2026-10-11 新增：间隔须伴随新增花费
+		everyTurns: 25, // 2026-10-11: 8 → 25 (the interval clause is subordinate)
+		minCostDeltaUsd: 0.05, // added 2026-10-11: an interval requires new spend
 		ctxWarnPct: 50,
 		ctxAlertPct: 75,
 		ctxWarnTokens: 150_000,
@@ -233,7 +233,7 @@ test("formatUsageLine emits exactly one line with the documented fields", () => 
 		ctxPct: 12,
 		contextWindow: 1_000_000,
 		hitPct: 95,
-		why: ["间隔 8 轮"],
+		why: ["8 turns · +$0.02 spend"],
 	});
 	assert.equal(line.includes("\n"), false, "the injected line must itself be compressible: no newlines");
 	assert.match(line, /^\[usage\] /);
@@ -242,21 +242,21 @@ test("formatUsageLine emits exactly one line with the documented fields", () => 
 	assert.match(line, /\$0\.063/);
 	assert.match(line, /ctx 12%\/1000k/);
 	assert.match(line, /cache hit 95%/);
-	assert.match(line, /触发：间隔 8 轮/);
-	assert.equal(line.includes("非任务"), false, "the marker is opt-in, the default line is unchanged");
+	assert.match(line, /triggers: 8 turns · \+\$0\.02 spend/);
+	assert.equal(line.includes("status only"), false, "the marker is opt-in, the default line is unchanged");
 });
 
 test("statusOnly marks the injection as a status report, not a task", () => {
 	// The line is delivered as a user-role message, so it can be mistaken for an
 	// instruction. The marker is the cheap guard; it must stay on one line.
-	const line = formatUsageLine({ prompt: 9_000, output: 72, cost: 0.001, ctxPct: 1, contextWindow: 1_000_000, hitPct: 53, why: ["间隔 8 轮"], statusOnly: true });
+	const line = formatUsageLine({ prompt: 9_000, output: 72, cost: 0.001, ctxPct: 1, contextWindow: 1_000_000, hitPct: 53, why: ["8 turns · +$0.02 spend"], statusOnly: true });
 	assert.equal(line.includes("\n"), false);
-	assert.match(line, /仅状态播报，非任务$/);
+	assert.match(line, /status only, not a task$/);
 	assert.ok(line.length < 130, `marker must stay terse, got ${line.length} chars`);
 });
 
 test("formatUsageLine omits the trigger clause when there is no reason, and tolerates missing fields", () => {
-	assert.equal(formatUsageLine({ prompt: 0, output: 0, cost: 0, ctxPct: 0, contextWindow: 0, hitPct: 100 }).includes("触发"), false);
+	assert.equal(formatUsageLine({ prompt: 0, output: 0, cost: 0, ctxPct: 0, contextWindow: 0, hitPct: 100 }).includes("triggers:"), false);
 	assert.doesNotThrow(() => formatUsageLine({}));
 	assert.equal(formatUsageLine({}).startsWith("[usage] "), true);
 });

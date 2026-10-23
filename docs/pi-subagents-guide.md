@@ -1,130 +1,115 @@
-# pi 子代理系统使用说明书
+# pi subagent system: usage guide
 
-> 版本 v1.0 · 2026-09-16 · 编写时基线:本机 pi 0.85.1 + pi-subagents 0.68.0
-> ⚠️ **2026-09-20 现状:pi 0.86.0 + pi-subagents 0.70.0** —— 本次只核对了版本号与
-> `toolBudget`/`resume` 一条（该条已修正，见 §…），**本文未整体重验**。引用本文的
-> 行为结论前请先对着当前源码复查。
-> 📌 **权威源声明（2026-09-20）：委派行为纪律以 `skills/delegate-verify/SKILL.md` 为唯一权威源
-> （它带源码版本核验戳）；本文仅作系统构成的背景教程，其中的行为结论若与 delegate-verify
-> 冲突，以 delegate-verify 为准。**
-> 实证基础:本文全部结论均来自本机源码逆向(schemas.ts)与两轮实跑(4 无头 + 4 正式 scout)
+> Baseline at first writing: pi 0.85.1 with pi-subagents 0.68.0 (2026-09-16).
+> Current baseline: pi 1.4.0 with pi-subagents 0.81.0 (2026-10-23).
+> **Authority**: dispatch discipline lives in `skills/delegate-verify/SKILL.md`, which carries a
+> source-verified version stamp. This page is background on how the system is composed; if a
+> behavioural statement here conflicts with that skill, the skill wins.
+> Evidence base: source inspection (`schemas.ts`) plus runs on the local machine.
 
----
-
-## 1. 系统构成
+## 1. Composition
 
 ```
-pi-subagents 扩展(npm 包,编写时 0.68.0 → 2026-09-20 实装 0.70.0)
-├── 工具:  subagent(调度)+ contact_supervisor(子→父求助)
-├── 命令:  /subagents-* 约 20 个(管理/状态/停止等)
-├── 内建 agent: scout / researcher / evidence-auditor / worker / reviewer / oracle / delegate
-├── 用户 agent: ~/.pi/agent/agents/{research,scout,worker}.md(同名覆盖内建)
-└── 观测:  run-history.jsonl(0600,1200 行轮转)+ subagent-artifacts/outputs/
+pi-subagents extension (npm package)
+├── tools:     subagent (dispatch) + contact_supervisor (child → parent)
+├── commands:  /subagents-* (management, status, stopping)
+├── built-in:  scout / researcher / evidence-auditor / worker / reviewer / oracle / delegate
+├── user:      agents/*.md in this repository (a same-name file overrides the built-in)
+└── telemetry: run-history.jsonl (mode 0600, rotated) + subagent-artifacts/outputs/
 ```
 
-**子代理本质**:一个专注的子 pi 会话 —— 有自己的上下文、任务、工具面;父会话派发任务并回收结果。
+A subagent is a focused child pi session: it has its own context, task and tool surface. The parent
+dispatches work and collects results.
 
-## 2. 何时用哪个 agent
+## 2. Choosing an agent
 
-| Agent | 用途 | 权限特征 |
+| Agent | Use | Permissions |
 |---|---|---|
-| **scout** | 本地代码/配置侦查:相关文件、数据流、风险 | 只读导向,输出压缩上下文 |
-| **researcher** | 网络/文档调研,带来源的简报 | 需子代理侧 pi-web-access |
-| **research**(自定义) | 同上用 ego-browser | 复用浏览器登录态 |
-| **worker** | 实现工作:改文件、验证、遇未批准决策时上报而非猜测 | **唯一写入线程** |
-| **reviewer** | 对 diff/计划做代码评审 | 只读+小修 |
-| **oracle** | 决策前第二意见,挑战假设 | 不编辑 |
-| **evidence-auditor** | 独立核查研究结论是否有来源支撑 | 只读 |
+| `scout` | Reconnaissance of local code and configuration: relevant files, data flow, risks | read-oriented; returns compressed context |
+| `researcher` | Web and document research with sources | needs web access in the child |
+| `evidence-auditor` | Independent check that research claims are supported by their sources | read-only |
+| `worker` | Implementation: edits, verification, escalates unapproved decisions instead of guessing | the only writing role |
+| `reviewer` | Code review of a diff or plan | read-only plus small fixes |
+| `verifier` | Executes the acceptance commands and reports raw output | read-only |
+| `oracle` | Second opinion before a decision; challenges assumptions | does not edit |
 
-口诀:**懂代码前 scout,信外部事实前 researcher,引结论前 evidence-auditor,动手用 worker,检查用 reviewer,决策没底用 oracle。**
+Rule of thumb: scout before reasoning about code, researcher before trusting external facts,
+evidence-auditor before quoting a conclusion, worker to change files, reviewer/verifier to check,
+oracle when the decision itself is uncertain.
 
-## 3. 调用方式
+## 3. Invoking
 
-### 3.1 自然语言(推荐起步)
-```
-"用 scout 摸清这个代码库,然后问我澄清问题"
-"跑并行 reviewer:一个看正确性,一个看测试,一个看过度设计"
-"问 oracle 我现在的计划有什么漏洞"
-```
-pi 自行决定调用与编排。
+Natural language is sufficient for most work ("have scout map this repository, then ask me
+clarifying questions"); pi decides how to dispatch and orchestrate.
 
-### 3.2 显式工具调用(精确控制)
-核心参数(逆向自 schemas.ts,实证可用):
+For precise control, the `subagent` tool takes:
 
-| 参数 | 作用 | 要点 |
+| Parameter | Effect | Notes |
 |---|---|---|
-| `agent` | agent 名 | 用户定义优先于内建同名 |
-| `task` | 任务描述 | **必须自包含**:子代理是全新上下文,路径/约束/输出格式全写进去 |
-| `async` | true=后台跑 | 完成时父会话收到原生通知;不要轮询等待 |
-| `cwd` | 执行目录 | 默认继承父会话 |
-| `model` | 模型覆盖 | 可后缀 `:off/minimal/low/medium/high/xhigh/max` 控思考档 |
-| `context` | fresh/fork/profile | fork=带父上下文;fresh=白板(默认视配置) |
-| `timeoutMs` | 超时 | 前台/单异步用配置值,默认 30m |
-| `toolBudget` | 工具调用预算 | soft 提醒 / hard 熔断 |
-| `usageBudget` | token/费用预算 | 超 hard 拒后续启动 |
-| `isolation` | none/worktree | 写任务用 worktree 隔离 git 现场 |
+| `agent` | agent name | a user definition overrides a built-in of the same name |
+| `task` | task description | must be self-contained: the child starts from a blank context, so paths, constraints and output format all belong in the task |
+| `async` | run in the background | the parent is woken by a native completion message; do not poll |
+| `cwd` | working directory | defaults to the parent's |
+| `model` | model override | optional `:off/minimal/low/medium/high/xhigh/max` suffix sets the thinking level |
+| `context` | `fresh` / `fork` / profile | `fork` carries parent context, `fresh` starts blank |
+| `timeoutMs` | timeout | defaults to the configured value (30 min) |
+| `toolBudget` | tool-call budget | `soft` warns, `hard` aborts |
+| `usageBudget` | token or cost budget | past `hard`, further launches are refused |
+| `isolation` | `none` / `worktree` | writing tasks should use a worktree to isolate the git state |
 
-### 3.3 并行编排
-**同一个消息块内发多个 async subagent 调用**即并行扇出(实测 4 并发稳定,扇出上限 64)。
-进阶:`workflow`/`workflowScript` 参数支持链式(`{previous}` 变量)、动态并行(`{item}` 模板)、收集聚合——见包内 docs/。
+Parallel fan-out is expressed by issuing several `async` calls in one message block (four
+concurrent children were stable in testing; the fan-out ceiling is 64). Chained and dynamic
+workflows are available through the `workflow` parameter; see the package documentation.
 
-## 4. 已验证的实用模式
+## 4. Patterns verified locally
 
-### 模式 A:并行侦查扇出(本机实测 2 轮 8 次全部成功)
-4 个 scout 各管一条独立线索,异步并行,结果自动回巢:
-- 提示词模板:`只读侦查,禁止写操作。任务:<具体目标+路径>。输出:紧凑中文报告 ≤500字。`
-- 适用:审计、盘点、跨目录调查、数据挖掘
+- **Parallel reconnaissance**: four scouts, one line of inquiry each, dispatched asynchronously.
+  The task text should state "read-only, no write operations" and the expected output shape.
+- **Headless fallback**: when child tools are unavailable, `pi -p --no-session "<task>"` with
+  `PI_NO_AUTO_COMMIT=1 PI_NO_NOTIFY=1` runs a separate process with the same configuration.
+  It inherits `HERDR_ENV` and therefore reports agent state to herdr.
+- **Isolated writes**: `worker` with `isolation: worktree` and a review gate is the only
+  configuration in which file changes are permitted.
 
-### 模式 B:无头降级通道(子代理工具不可用时的退路)
-```bash
-PI_NO_AUTO_COMMIT=1 PI_NO_NOTIFY=1 pi -p --no-session "<自包含任务>" &
-```
-OS 级并行,加载同款配置;实测 4/4 成功。注意会继承 HERDR_ENV 并向 herdr 上报状态。
+## 5. Safety mechanisms
 
-### 模式 C:写任务隔离(设计要点,未实跑)
-`worker` + `isolation:worktree` + `acceptance:reviewed` —— 唯一允许写的 agent,git 现场隔离,完成后评审门禁。
+- A bash guard recognises subagents (`PI_SUBAGENT_ID`) and hard-blocks destructive commands
+  without prompting, whereas the parent session asks for confirmation.
+- Run history is written with mode 0600 and rotated.
+- Credentials are not isolated by the runtime: a child runs with the same user privileges, so
+  write permissions are constrained by task wording, not by the process boundary.
 
-## 5. 安全机制(本机实证)
+Discipline: state read-only for reconnaissance, dispatch writes to `worker` only, use a worktree
+for work in production directories, and set `toolBudget` on large fan-outs.
 
-| 机制 | 状态 |
-|---|---|
-| bash-guard P1 补丁:子代理识别(PI_SUBAGENT_ID 三重检测)→ **灾难命令硬阻断不弹窗** | ✅ 补丁在位 |
-| 主会话弹 Run/Abort(HIGH 级),子代理直接拒 | ✅ P4/P7 在位 |
-| 密钥隔离:子代理不继承 auth.json 之外的敏感文件权限差异 | pi 进程同级,靠任务约束 |
-| run-history 0600 + 轮转 | ✅ 实证 |
-
-**纪律**:① 侦查任务必须写"只读,禁止写操作";② 写任务只派 worker;③ 生产目录操作配 worktree 隔离;④ 批量扇出设 toolBudget。
-
-## 6. 观测与排障
+## 6. Observing and diagnosing
 
 ```bash
-# 运行历史(谁跑了什么、成败、耗时)
-cat ~/.pi/agent/run-history.jsonl | tail -5
-# 子代理产出没直接看到的,读 artifact
-ls ~/.pi/agent/sessions/<项目目录>/subagent-artifacts/outputs/
-# herdr 视角看子代理状态(权威 hook 已激活)
-herdr agent list
+tail -5 ~/.pi/agent/run-history.jsonl                                  # who ran what, outcome, duration
+ls ~/.pi/agent/sessions/<project>/subagent-artifacts/outputs/          # full child output
+herdr agent list                                                       # agent state as herdr sees it
 ```
 
-**常见问题**:
-1. 子代理改了 agents/*.md 不生效 → agent 定义同扩展一样**启动时加载**,需新会话
-2. 长时间无响应 → 原生通知机制会唤醒父会话;交互式会话别用 sleep 轮询
-3. 输出被截断 → artifact 文件里有完整版(实测 retention 管理)
+Common issues:
 
-## 7. 成本参考(本机实测)
+1. Edits to `agents/*.md` have no effect in the current session: agent definitions, like
+   extensions, are loaded at startup.
+2. A child that appears to hang will wake the parent through the native completion message; do not
+   poll with sleep in an interactive session.
+3. Truncated output is usually available in full under `subagent-artifacts/outputs/`.
 
-- 4 个并行 scout 审计任务:每个约 30-60s,模型 glm-5.3-flash
-- 历史总计 1.23 亿 token ≈ $2(deepseek/glm 系)——子代理扇出的边际成本极低
-- 成本控制:默认继承父模型;`model` 参数可给子代理降档(如 `:minimal`)
+## 7. Cost observations
 
-## 8. 速查
+- Four parallel scout audits: roughly 30 to 60 seconds per child on a flash-tier model.
+- Historical total across sessions: about 123M tokens, approximately $2 on the deepseek/glm price
+  tier. Fan-out therefore has a low marginal cost.
+- Children inherit the parent model by default; the `model` parameter can lower the tier for a
+  child (for example `:minimal`).
+
+## 8. Quick reference
 
 ```
-最小调用:   subagent({agent:"scout", task:"只读...≤500字"})
-并行扇出:   同一块内多个 async:true 调用
-后台等结果: 不用等,原生通知会唤醒
-强制同步:   async:false(阻塞父会话,慎用)
+minimal call:   subagent({agent:"scout", task:"read-only ... <=500 words"})
+fan-out:        several async:true calls in the same block
+waiting:        do not wait; the native completion message wakes the parent
 ```
-
----
-*维护:本说明书随 pi-subagents 升级而更新;实测记录见 run-history.jsonl*

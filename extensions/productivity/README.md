@@ -1,30 +1,35 @@
-# Productivity Suite(方案 C)
+# Productivity suite
 
-个人效率扩展套件,安装在 `~/.pi/agent/extensions/productivity/`,pi 启动时自动加载。
+A set of small, independent extensions for `~/.pi/agent/extensions/productivity/`. pi loads the
+directory at startup; `index.ts` composes the modules so each one can be disabled on its own.
 
-## 模块
+## Modules
 
-| 文件 | 功能 | 开关 |
-| --- | --- | --- |
-| `session-name.ts` | 首次输入时自动命名会话(截断 40 字符,跳过 `/` 命令);`/session-name [名字]` 手动设置/查看 | — |
-| `notify.ts` | **仅在 herdr 之外生效**（`HERDR_ENV=1` 时直接返回，通知归 herdr）。触发 `agent_settled`；Ghostty/iTerm2/WezTerm 用 OSC 777（通知归属终端 App、点击回窗口），Kitty 用 OSC 99，macOS 其余情况回落 osascript | `PI_NO_NOTIFY=1` |
-| ~~`model-status.ts`~~ | 状态栏常驻当前模型——**已停用**(2026-09-20,footer 已常驻显示模型,双显示属纯重复);恢复=取消 `index.ts` 里两行注释 | 在 `index.ts` 注释中 |
-| `todo.ts` | 官方 todo 扩展:模型可调用的 `todo` 工具 + `/todos` 可视化面板(状态存会话内,分支安全) | — |
-| `footer.ts` | TUI 底部自定义 footer:本会话 token 用量 / 成本 / git 分支 / 模型,`/footer` 开关 | — |
-| `usage-inject.ts`(+`usage-policy.js`) | 把用量/成本/ctx 按策略周期性注入模型上下文(模型看不到 footer);策略是纯函数,测试 `npm run selftest` 含 | — |
+| File | Function | Switch |
+|---|---|---|
+| `session-name.ts` | Names a session from its first user message (truncated to 40 characters, slash commands skipped); `/session-name [name]` sets or prints it | — |
+| `notify.ts` | Desktop notification when the agent settles. **Only fires outside herdr** — it returns immediately when `HERDR_ENV=1`, because herdr owns notifications for panes it hosts. Ghostty, iTerm2 and WezTerm receive OSC 777 (the notification belongs to the terminal app and clicking it focuses that window), Kitty receives OSC 99, other macOS terminals fall back to osascript | `PI_NO_NOTIFY=1` |
+| ~~`model-status.ts`~~ | Status-bar model indicator — **disabled** (2026-09-20): the footer already shows the model, so a second display is redundant. To restore, uncomment the two lines in `index.ts` | in `index.ts` |
+| `todo.ts` | The `todo` tool plus a `/todos` panel; state lives in the session and survives branching | — |
+| `footer.ts` | Custom TUI footer: tokens, cost, git branch and model for this session; `/footer` toggles it | `/footer` |
+| `usage-inject.ts` + `usage-policy.js` | Injects usage, cost and context figures into the model context on a policy (the model cannot see the footer). The policy is pure functions with unit tests | — |
 
-## 日常用法
+## Day-to-day behaviour
 
-- 启动 `pi` 后,future 底部自动显示 `↑3.2k ↓1.1k $0.042 deepseek-v4-pro (main)`
-- 直接说"帮我列个待办"——模型会调用 `todo` 工具;`/todos` 查看面板
-- 每次 agent 跑完,系统弹通知（在 herdr 里运行时由 herdr 发,见下方「通知」）
-- `/resume` 列表里会话名是任务摘要而不是原始长 prompt
+- The footer shows `↑3.2k ↓1.1k $0.042 deepseek-v4-pro (main)` for the current session.
+- Asking for a task list makes the model call the `todo` tool; `/todos` renders the panel.
+- Each settled run produces one notification (issued by herdr when the pane runs under herdr).
+- `/resume` lists session names derived from the task summary rather than the raw prompt.
 
-## 调整
+## Adjusting
 
-- 想关掉某个模块:编辑 `index.ts`,注释掉对应行,`/reload` 热重载
-- 单独调试:`pi -e ~/.pi/agent/extensions/productivity/index.ts`
+- To disable a module, comment out its line in `index.ts` and run `/reload`.
+- To run a single module in isolation: `pi -e ~/.pi/agent/extensions/productivity/index.ts`.
 
-## 注意
+## Notes
 
-- 扩展以你的完整用户权限运行(本套件仅调用 git / osascript / 通知协议,无网络请求)
+- Extensions run with the full privileges of your user account. This suite only reads git state,
+  emits terminal notification sequences, and calls `osascript` on macOS; it makes no network
+  requests.
+- `usage-inject` reports on turn boundaries and at context or cost thresholds; the injected line is
+  marked `status only, not a task` so it is not mistaken for an instruction.

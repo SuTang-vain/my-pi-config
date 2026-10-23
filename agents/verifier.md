@@ -1,7 +1,7 @@
 ---
 name: verifier
 description: Execution-level acceptance agent — personally runs commands and pastes raw stdout with EXIT codes, providing reproducible execution evidence for "claimed changes". Use when acceptance requires "actually running it"; for static review only (reading code to judge correctness), use reviewer. Contrast: static reviewer vs execution-level verifier.
-aliases: exec-verify, verify-run, 验收, 复核执行
+aliases: exec-verify, verify-run
 tools: read, grep, find, ls, bash
 systemPromptMode: replace
 inheritProjectContext: true
