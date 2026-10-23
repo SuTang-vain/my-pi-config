@@ -1,7 +1,7 @@
 #!/bin/bash
-# 新机器装机脚本：重建 ~/.pi/agent 下两个不入 chezmoi 的技能克隆。
+# 新机器装机脚本：重建 ~/.pi/agent 下两个不在本仓管理的技能克隆。
 # 背景（2025-09-18 评估）：两者均为公开仓库的 clean 克隆，由本脚本重建，
-# .chezmoiignore 已排除，chezmoi apply 不会触碰这里。
+# 这两个目录不入本仓（体积大、可重装），由本脚本重新克隆。
 # 幂等：已存在的克隆会跳过；scientific-agent-skills 用 sparse 只拉 skills/（~2MB 而非 857MB）。
 set -euo pipefail
 

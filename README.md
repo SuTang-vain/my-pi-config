@@ -47,7 +47,7 @@ Skills with zero recorded invocations, extensions overtaken by upstream features
 ## Architecture
 
 ```
-Meta layer      chezmoi (versioning + age-encrypted secrets) · selftest.mjs (19 invariants)
+Meta layer      git versioning · scripts/selftest.mjs (machine-checkable invariants) · no secrets in this repo
 Rule layer      AGENTS.md (verified facts) · APPEND_SYSTEM.md (7 operating rules)
 Base layer      settings.json — default model, per-model thinking levels, compaction tuning
 Capability      9 resident skills (4 whitelisted + 5 auto-discovered); others mount on demand

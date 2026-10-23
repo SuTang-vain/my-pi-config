@@ -118,7 +118,7 @@ herdr plugin uninstall dot.terminal-notifier
 | 插件配置 `config.env` | `~/.config/herdr/plugins/config/dot.terminal-notifier/`（herdr 管理的目录，内容归用户） | 模板在 `~/.pi/agent/scripts/herdr-notify.config.env` |
 | herdr 主配置 `[ui.toast]`/`[ui.sound]` | `~/.config/herdr/config.toml`（含主题等无关项，herdr 无 include 机制） | 文档记录，未纳管 |
 | 通知授权（TCC） | macOS 系统设置，按 bundle id + 签名 CDHash | ❌ 不可脚本化；adhoc 重签会重置 |
-| pi 侧兜底 `notify.ts` + 阻塞桥 | pi-chezmoi | ✅ 已纳管 |
+| pi 侧兜底 `notify.ts` + 阻塞桥 | 本仓 `extensions/` | ✅ 已随本仓发布 |
 
 ## 8. 相关文档
 

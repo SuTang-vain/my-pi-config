@@ -47,7 +47,7 @@
 ## 架构
 
 ```
-元层    chezmoi（版本化 + age 加密密钥文件）· selftest.mjs（19 项不变量）
+元层    git 版本化 · scripts/selftest.mjs（机器可检不变量）· 本仓不含任何密钥
 规则层  AGENTS.md（可验证事实）· APPEND_SYSTEM.md（7 条操作规则）
 基座层  settings.json：默认模型、逐模型思考档位、compaction 调参
 能力层  9 个常驻技能（白名单 4 + 自动扫描 5），其余按需挂载
