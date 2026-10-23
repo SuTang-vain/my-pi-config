@@ -276,10 +276,21 @@ const HOST_PKG = "@earendil-works/pi-coding-agent";
 const subagentsDir = path.join(MODULE_DIR, "pi-subagents");
 let globalPiVersion = null;
 
-check("the global pi package is locatable and its version readable", () => {
-	const guess = path.join(os.homedir(), ".local", "lib", "node_modules", HOST_PKG, "package.json");
-	if (!exists(guess)) return `not found: ${guess}`;
-	globalPiVersion = readJson(guess).version;
+check("the pi host package is locatable and its version readable", () => {
+	// Three layouts are in use: the managed installer (install/current-version ->
+	// install/releases/<v>/node_modules), an extension dependency tree, and a global npm prefix.
+	const candidates = [];
+	try {
+		const managed = fs.readFileSync(path.join(AGENT_DIR, "install", "current-version"), "utf8").trim();
+		if (managed) candidates.push(path.join(AGENT_DIR, "install", "releases", managed, "node_modules", HOST_PKG, "package.json"));
+	} catch {
+		// no managed installer on this machine
+	}
+	candidates.push(path.join(MODULE_DIR, HOST_PKG, "package.json"));
+	candidates.push(path.join(os.homedir(), ".local", "lib", "node_modules", HOST_PKG, "package.json"));
+	const found = candidates.find((p) => exists(p));
+	if (!found) return `not found in any of:\n${candidates.map((c) => `  ${c}`).join("\n")}`;
+	globalPiVersion = readJson(found).version;
 	return null;
 });
 
