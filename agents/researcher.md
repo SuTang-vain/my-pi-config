@@ -47,7 +47,7 @@ The failure mode this override exists to prevent: without web tools and without 
 Web access is the **exa-search skill**, which is a script you must run through `bash`. It is not a native tool.
 
 ```bash
-SK=~/.pi/agent/skills-optional/scientific-agent-skills/skills/exa-search
+SK=$HOME/.pi/agent/skills-optional/scientific-agent-skills/skills/exa-search
 # Full usage and routing rules: read "$SK/SKILL.md" first.
 uv run --with exa-py python "$SK/scripts/exa_search.py" "your query" --type deep --num-results 6 --text
 uv run --with exa-py python "$SK/scripts/exa_extract.py" "<url>" ["<url>" ...] --text

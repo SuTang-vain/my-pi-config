@@ -47,17 +47,29 @@ const reasonsOf = (over) => shouldInject(input(over)).reasons;
 
 // ── totality ──────────────────────────────────────────────────────────
 
-test("is total: no args and an empty object never inject; a bare wrapper still hits the interval", () => {
+test("is total: no args and an empty object never inject; a bare wrapper stays quiet", () => {
 	assert.equal(shouldInject(undefined).inject, false);
 	assert.equal(shouldInject({}).inject, false);
 	assert.deepEqual(shouldInject(undefined).reasons, []);
-	// hasUserTask:true with everything else absent must not throw. turnsSinceInject
-	// defaults to +Infinity, so the first report after a real user message appears comes
-	// from the interval clause — that is the designed baseline report, and the
-	// hasUserTask gate is what stops a fresh session from running a turn for it.
+	// hasUserTask:true with everything else absent must not throw. turnsSinceInject defaults to
+	// +Infinity, but the interval clause is now subordinate to spend (minCostDeltaUsd), so a bare
+	// wrapper stays quiet: the hasUserTask gate plus that subordinate rule are what stop a fresh
+	// session from running a whole turn for a status line.
 	const bare = shouldInject({ hasUserTask: true });
-	assert.equal(bare.inject, true);
-	assert.deepEqual(bare.reasons, [`间隔 ${DEFAULT_POLICY.everyTurns} 轮`]);
+	assert.equal(bare.inject, false);
+	assert.deepEqual(bare.reasons, []);
+});
+
+test("an interval report without spend evidence stays silent (fail-quiet)", () => {
+	// 2026-10-11: the interval clause became subordinate to cost. Omitting costSinceInject
+	// must not produce a report — a cheap session gets no turn-数打卡.
+	assert.deepEqual(reasonsOf({ turnsSinceInject: 999 }), []);
+	assert.deepEqual(reasonsOf({ turnsSinceInject: 999, costSinceInject: 0.049 }), [], "just below the threshold");
+	assert.deepEqual(reasonsOf({ turnsSinceInject: 999, costSinceInject: 0.05 }), [
+		`间隔 ${DEFAULT_POLICY.everyTurns} 轮·新增 $0.05`,
+	]);
+	// Cost alone, without the turn gap, is the cost-band clause's job, not this one's.
+	assert.deepEqual(reasonsOf({ turnsSinceInject: 1, costSinceInject: 5 }), []);
 });
 
 test("an empty session (no real user task yet) never injects, even at the interval", () => {
@@ -65,12 +77,45 @@ test("an empty session (no real user task yet) never injects, even at the interv
 	assert.equal(shouldInject(input({ hasUserTask: false, turnsSinceInject: 999 })).inject, false);
 });
 
+test("an explicit null for prev/cur is tolerated, not thrown", () => {
+	// A throw here would be swallowed by the caller's try/catch and kill the feature silently.
+	// Found by a replay script that passed prev:null on the first turn.
+	assert.doesNotThrow(() => shouldInject({ prev: null, cur: null, hasUserTask: true, turnsSinceInject: 999, costSinceInject: 1 }));
+	assert.equal(shouldInject({ prev: null, cur: null, hasUserTask: true, turnsSinceInject: 999, costSinceInject: 1 }).inject, true);
+});
+
 // ── interval ──────────────────────────────────────────────────────────
 
-test("the everyTurns gap is a trigger on its own", () => {
-	assert.equal(shouldInject(input({ turnsSinceInject: DEFAULT_POLICY.everyTurns })).inject, true);
-	assert.equal(shouldInject(input({ turnsSinceInject: DEFAULT_POLICY.everyTurns - 1 })).inject, false);
-	assert.ok(reasonsOf({ turnsSinceInject: DEFAULT_POLICY.everyTurns })[0].includes(`${DEFAULT_POLICY.everyTurns} 轮`));
+test("the everyTurns gap is a trigger only together with new spend", () => {
+	const spend = { costSinceInject: 0.1 };
+	assert.equal(shouldInject(input({ turnsSinceInject: DEFAULT_POLICY.everyTurns, ...spend })).inject, true);
+	assert.equal(shouldInject(input({ turnsSinceInject: DEFAULT_POLICY.everyTurns - 1, ...spend })).inject, false);
+	assert.ok(
+		reasonsOf({ turnsSinceInject: DEFAULT_POLICY.everyTurns, ...spend })[0].includes(`${DEFAULT_POLICY.everyTurns} 轮·新增 $0.10`),
+	);
+});
+
+test("interactive defaults to true, so callers that omit it keep the old behaviour", () => {
+	// Regression guard for the headless fix: omitting `interactive` must not silence the
+	// interval clause for existing callers that do supply spend evidence.
+	assert.equal(input({ turnsSinceInject: 999 }).interactive, undefined);
+	assert.deepEqual(reasonsOf({ turnsSinceInject: 999, costSinceInject: 0.1 }), [`间隔 ${DEFAULT_POLICY.everyTurns} 轮·新增 $0.10`]);
+	assert.deepEqual(reasonsOf({ turnsSinceInject: 999, costSinceInject: 0.1, interactive: true }), [
+		`间隔 ${DEFAULT_POLICY.everyTurns} 轮·新增 $0.10`,
+	]);
+});
+
+test("non-interactive (headless) suppresses the interval clause only", () => {
+	assert.deepEqual(reasonsOf({ turnsSinceInject: 999, interactive: false }), []);
+	assert.equal(shouldInject(input({ turnsSinceInject: 999, interactive: false })).inject, false);
+	// The signals that cost real money or context still fire: a headless run must still learn
+	// that its context is about to blow up or that its prefix was re-billed in full.
+	const alert = { turnsSinceInject: 999, interactive: false };
+	assert.deepEqual(reasonsOf({ ...alert, prev: { ctxTokens: 299_000 }, cur: { ctxTokens: 301_000 } }), [
+		"ctx 越过 300k（里程碑后适合 /compact）",
+	]);
+	assert.deepEqual(reasonsOf({ ...alert, prev: { costUsd: 0.4 }, cur: { costUsd: 0.6 } }), ["成本 0→1 档（$0.50）"]);
+	assert.deepEqual(reasonsOf({ ...alert, cur: { turnCacheHitPct: 0 } }), ["本轮 cache 全 miss（前缀被完整重计费）"]);
 });
 
 // ── cache ─────────────────────────────────────────────────────────────
@@ -166,7 +211,8 @@ test("a multi-band jump is reported once, not once per band", () => {
 
 test("DEFAULT_POLICY is unchanged (thresholds are a deliberate tuning, not incidental)", () => {
 	assert.deepEqual(DEFAULT_POLICY, {
-		everyTurns: 8,
+		everyTurns: 25, // 2026-10-11: 8 → 25（间隔条款降级为从属条件）
+		minCostDeltaUsd: 0.05, // 2026-10-11 新增：间隔须伴随新增花费
 		ctxWarnPct: 50,
 		ctxAlertPct: 75,
 		ctxWarnTokens: 150_000,
@@ -197,6 +243,16 @@ test("formatUsageLine emits exactly one line with the documented fields", () => 
 	assert.match(line, /ctx 12%\/1000k/);
 	assert.match(line, /cache hit 95%/);
 	assert.match(line, /触发：间隔 8 轮/);
+	assert.equal(line.includes("非任务"), false, "the marker is opt-in, the default line is unchanged");
+});
+
+test("statusOnly marks the injection as a status report, not a task", () => {
+	// The line is delivered as a user-role message, so it can be mistaken for an
+	// instruction. The marker is the cheap guard; it must stay on one line.
+	const line = formatUsageLine({ prompt: 9_000, output: 72, cost: 0.001, ctxPct: 1, contextWindow: 1_000_000, hitPct: 53, why: ["间隔 8 轮"], statusOnly: true });
+	assert.equal(line.includes("\n"), false);
+	assert.match(line, /仅状态播报，非任务$/);
+	assert.ok(line.length < 130, `marker must stay terse, got ${line.length} chars`);
 });
 
 test("formatUsageLine omits the trigger clause when there is no reason, and tolerates missing fields", () => {

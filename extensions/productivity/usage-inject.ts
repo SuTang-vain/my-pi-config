@@ -14,9 +14,25 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { shouldInject, formatUsageLine, DEFAULT_POLICY } from "./usage-policy.js";
 
+/**
+ * 只有 print/json 是「无人在旁的一次性运行」。tui/rpc 都保留轮数节流（与 hasUI 的语义一致）。
+ * 用反白名单而非白名单：将来新增模式时默认保住心跳，而不是默默失去成本感知。
+ */
+function interactiveMode(ctx: ExtensionContext): boolean {
+	return ctx.mode !== "print" && ctx.mode !== "json";
+}
+
 export default function (pi: ExtensionAPI) {
+	// 整体开关，与 notify.ts 的 PI_NO_NOTIFY 对齐。子代理 runner / 批处理环境里带上它，
+	// 就能避免每条 child 会话再多交 1/8 的轮次税（实测 child run 会话里同样的注入会触发）。
+	if (process.env.PI_NO_USAGE_INJECT === "1" || process.env.PI_NO_USAGE_INJECT === "true") return;
+
 	let lastStats: { ctxPct: number; costUsd: number } | null = null;
-	let turnsSinceInject = Number.POSITIVE_INFINITY;
+	// 从 0 起算（而非 +∞）：间隔条款的「25 轮下限」必须对首次播报也成立，否则首报只由成本决定，
+	// 而理由串会写出一个并未发生的轮数。紧迫的成本事件由成本档/ctx 档独立承担（它们不看轮数）。
+	let turnsSinceInject = 0;
+	/** 上次注入时的累计成本：间隔条款现在要「间隔 + 这段间隔里确实花了钱」两个条件（见 usage-policy.js）。 */
+	let costAtLastInject = 0;
 
 	/** 从当前 branch 汇总用量（与 footer.ts 同口径：prompt = input + cacheRead + cacheWrite） */
 	function collect(ctx: ExtensionContext) {
@@ -63,17 +79,28 @@ export default function (pi: ExtensionAPI) {
 				return Array.isArray(c) && c.some((x) => (x as { type?: string })?.type === "text" && String((x as { text?: string }).text ?? "").trim().length > 0);
 			});
 			const prev = lastStats ?? { ctxPct: 0, ctxTokens: 0, costUsd: 0 };
-			const { inject, reasons } = shouldInject({ prev, cur, turnsSinceInject, hasPrev, hasUserTask }, DEFAULT_POLICY);
+			// 自增放在判定之前：本次 turn_end 也算「已经过去的 1 轮」，否则「间隔 25 轮」实际落在第 26 轮。
+			turnsSinceInject++;
+			const { inject, reasons } = shouldInject(
+				{
+					prev,
+					cur,
+					turnsSinceInject,
+					hasPrev,
+					hasUserTask,
+					interactive: interactiveMode(ctx),
+					costSinceInject: Math.max(0, s.cost - costAtLastInject),
+				},
+				DEFAULT_POLICY,
+			);
 			lastStats = { ctxPct: cur.ctxPct, ctxTokens: cur.ctxTokens, costUsd: cur.costUsd };
-			if (!inject) {
-				turnsSinceInject++;
-				return;
-			}
+			if (!inject) return;
 			turnsSinceInject = 0;
+			costAtLastInject = s.cost;
 			pi.sendMessage(
 				{
 					customType: "usage",
-					content: formatUsageLine({ ...s, why: reasons }),
+					content: formatUsageLine({ ...s, why: reasons, statusOnly: true }),
 					display: false,
 				},
 				{ deliverAs: "steer" },

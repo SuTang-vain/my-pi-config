@@ -10,7 +10,8 @@
  */
 
 export const DEFAULT_POLICY = {
-	everyTurns: 8, // 至少间隔多少轮播报一次
+	everyTurns: 25, // 间隔下限（从属条件：还须满足 minCostDeltaUsd 才播报）
+	minCostDeltaUsd: 0.05, // 距上次注入新增 ≥此金额才因「间隔」播报 —— 把轮数打卡换成花钱事件
 	ctxWarnPct: 50, // ctx 越过窗口 50% 播报
 	ctxAlertPct: 75, // ctx 越过窗口 75% 播报并建议在里程碑后 /compact
 	ctxWarnTokens: 150_000, // 绝对预算档：成本/延迟随绝对 token 增长，不只随窗口占比
@@ -21,12 +22,19 @@ export const DEFAULT_POLICY = {
 };
 
 /**
- * @param {{prev: Stats, cur: Stats, turnsSinceInject: number}} input
+ * @param {{prev: Stats, cur: Stats, turnsSinceInject: number, costSinceInject: number, interactive: boolean}} input
  *   Stats: { ctxPct, costUsd, turnCacheHitPct }
+ *   interactive: true only when a human drives the session (TUI/RPC). In headless modes
+ *   (print/json) the interval clause is suppressed — see the note at the interval test.
+ *   costSinceInject: spend since the last injection; the interval clause is subordinate to it.
  * @returns {{inject: boolean, reasons: string[]}}
  */
 export function shouldInject(input, policy = DEFAULT_POLICY) {
-	const { prev = {}, cur = {}, turnsSinceInject = Number.POSITIVE_INFINITY, hasPrev = false, hasUserTask = false } = input ?? {};
+	// 两个 stats 对象也要兜 null（不只 undefined）：本函数自称 total，而一个会抛错的调用方会被
+	// 扩展的 try/catch 吞掉 —— 那就是整个功能静默死亡（2026-10-11 回放脚本实际踩到过）。
+	const { turnsSinceInject = Number.POSITIVE_INFINITY, hasPrev = false, hasUserTask = false, interactive = true, costSinceInject = 0 } = input ?? {};
+	const prev = input?.prev ?? {};
+	const cur = input?.cur ?? {};
 	// 会话还没有任何用户任务时不播报：实测新会话会为一个纯状态行空转一轮（cfgtest2）
 	if (!hasUserTask) return { inject: false, reasons: [] };
 	const reasons = [];
@@ -53,7 +61,13 @@ export function shouldInject(input, policy = DEFAULT_POLICY) {
 	if (hasPrev && Number.isFinite(cur.turnCacheHitPct) && cur.turnCacheHitPct < policy.cacheMissPct) {
 		reasons.push("本轮 cache 全 miss（前缀被完整重计费）");
 	}
-	if (turnsSinceInject >= policy.everyTurns) reasons.push(`间隔 ${policy.everyTurns} 轮`);
+	// 间隔条款是「从属条件」，不是触发器：只有这段间隔里确实花了钱（costSinceInject 达阈值）才播报。
+	// 理由（2026-10-11 实测）：一次会话 23 次注入里 21 次由它单独触发 —— 贡献了 91% 的注入量，
+	// 却对应价值最低的场景（设计目标是「成本失明」，那种由成本档/ctx 档覆盖）。它且只在有人盯屏幕时
+	// 才有意义：headless（print/json）里买到的是「多跑一轮、回复一句无事可做」。
+	// costSinceInject 缺省为 0 = 「没有花钱证据就不打扰」（fail-quiet），故老调用方不会因此多播报。
+	if (interactive && turnsSinceInject >= policy.everyTurns && costSinceInject >= policy.minCostDeltaUsd)
+		reasons.push(`间隔 ${policy.everyTurns} 轮·新增 $${costSinceInject.toFixed(2)}`);
 
 	return { inject: reasons.length > 0, reasons };
 }
@@ -70,5 +84,7 @@ export function formatUsageLine(s) {
 		`cache hit ${pct(s.hitPct)}%`,
 	];
 	if (s.why?.length) parts.push(`触发：${s.why.join('、')}`);
+	// 注入是一条 user 角色消息，可能被当成任务 —— 显式声明它不是（约 9 token 的保险）。
+	if (s.statusOnly) parts.push('仅状态播报，非任务');
 	return `[usage] ${parts.join(' · ')}`;
 }

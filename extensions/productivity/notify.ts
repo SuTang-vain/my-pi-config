@@ -1,11 +1,24 @@
 /**
  * Notify extension — desktop notification when the agent is done.
  *
- * Notification backends (in order of preference):
- *   - macOS: osascript "display notification" (works in any terminal app)
- *   - Windows Terminal (WSL): PowerShell toast
+ * Scope: this only fires when pi runs OUTSIDE herdr. Inside herdr the
+ * notification is owned by herdr itself ([ui.toast] delivery = "system",
+ * fed by the state the herdr pi integration reports), so the handler bails
+ * on HERDR_ENV=1 to avoid a second, duplicate notification.
+ *
+ * Backends, first match wins:
+ *   - Ghostty / iTerm2 / WezTerm / rxvt-unicode: OSC 777 (title + body, the
+ *     notification is attributed to the terminal app and clicking it focuses
+ *     that window — hence preferred over osascript on macOS)
  *   - Kitty: OSC 99
- *   - iTerm2 / Ghostty / WezTerm / rxvt-unicode: OSC 777
+ *   - Windows Terminal (WSL): PowerShell toast
+ *   - macOS fallback: osascript "display notification" (shows as Script Editor,
+ *     cannot activate the terminal)
+ *
+ * Trigger: agent_settled, not agent_end — agent_end can be followed by
+ * retries, overflow recovery, compaction or queued work, so notifying there
+ * fires repeatedly inside one run. Docs: "Use agent_settled for
+ * notification-only work."
  *
  * Kill switch: PI_NO_NOTIFY=1
  */
@@ -42,21 +55,29 @@ function notifyOSC99(title: string, body: string): void {
 	process.stdout.write(`\x1b]99;i=1:p=body;${body}\x1b\\`);
 }
 
+/** Terminals whose OSC 777 notification Ghostty-style is supported and clickable. */
+const OSC777_TERMINALS = new Set(["ghostty", "iTerm.app", "WezTerm", "rxvt-unicode"]);
+
 function notify(title: string, body: string): void {
-	if (process.platform === "darwin") {
-		notifyMac(title, body);
+	if (process.env.KITTY_WINDOW_ID) {
+		notifyOSC99(title, body);
+	} else if (OSC777_TERMINALS.has(process.env.TERM_PROGRAM ?? "")) {
+		notifyOSC777(title, body);
 	} else if (process.env.WT_SESSION) {
 		notifyWindows(title, body);
-	} else if (process.env.KITTY_WINDOW_ID) {
-		notifyOSC99(title, body);
+	} else if (process.platform === "darwin") {
+		notifyMac(title, body);
 	} else {
 		notifyOSC777(title, body);
 	}
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.on("agent_end", async () => {
+	pi.on("agent_settled", async () => {
 		if (process.env.PI_NO_NOTIFY === "1") return;
+		// herdr owns notifications for panes it hosts (and suppresses them for
+		// the tab you are already looking at, which we cannot detect from here).
+		if (process.env.HERDR_ENV === "1") return;
 
 		const name = pi.getSessionName();
 		notify("pi", name ? `「${name}」已完成,等待输入` : "已完成,等待输入");

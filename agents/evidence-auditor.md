@@ -22,7 +22,7 @@ The upstream package definition declares `tools: read, web_search, fetch_content
 Web access here is the **exa-search skill**, run through `bash`:
 
 ```bash
-SK=~/.pi/agent/skills-optional/scientific-agent-skills/skills/exa-search
+SK=$HOME/.pi/agent/skills-optional/scientific-agent-skills/skills/exa-search
 uv run --with exa-py python "$SK/scripts/exa_search.py" "your query" --type deep --num-results 6 --text
 uv run --with exa-py python "$SK/scripts/exa_extract.py" "<url>" ["<url>" ...] --text
 ```

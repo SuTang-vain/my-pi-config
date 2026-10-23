@@ -2,11 +2,11 @@
 
 **[English](README.md)** | **简体中文**
 
-一套经过实测校准、可自我校验的 [pi](https://github.com/badlogic/pi-mono) 编码代理（`@earendil-works/pi-coding-agent`）配置。
+一套经过实测校准、可自我校验的 [pi](https://github.com/earendil-works/pi) 编码代理（`@earendil-works/pi-coding-agent`）配置。
 
 本仓库是一套完整的生产在用配置：七个角色专精的子代理、精选的技能白名单、按需组合的自写扩展套件，以及一个对全部跨文件不变量做机器检查的 selftest 测试框架。文中记录的每项设计决策都有实测数据、源码审计或真实生产事故作为依据。
 
-**快照**：pi 0.86.0 · pi-subagents 0.70.0 · 2026-09-20。
+**快照**：pi 1.4.0 · pi-subagents 0.81.0 · 2026-10-23。
 
 ---
 
@@ -83,6 +83,7 @@
 | `prompt-snippets/` | 六个单用途提示词片段，按消息手动开关（`alt+s`）；发送后自动复位，未启用的片段零成本 |
 | `context.ts` | `/context` 把上下文窗口构成渲染为彩色方块网格，带阈值告警 |
 | `md-link.ts` | 把一个 Markdown 文件链接到会话做协作编辑（助手输出自动追加；`/send-diff` 把改动发回模型） |
+| `herdr-blocked-bridge.ts` | 把 `rpiv:ask-user:blocked` 桥接到 herdr 的 `herdr:blocked` 代理状态，让运行中途的问卷在 herdr 里显示为「需要输入」（并触发通知），而不是一直「working」 |
 | `subagent/config.json` | pi-subagents 调优：默认 fresh 上下文、spawn 预算、checkpoint 收尾宽限 |
 
 ## 技能
@@ -91,6 +92,8 @@
 
 - `delegate-verify`——委派核对的权威派发手册，每条纪律都对照所装 pi-subagents 源码验证过（带版本戳）。
 - `analyze-sessions`——零依赖 Python 工具集：成本聚合、提示词模式挖掘、单会话渲染、跨会话全文搜索。
+- `herdr`——操作独立的 herdr 面板/代理（切分、启动、派发、读取），命令语法以运行中的 `herdr --skill` 输出为准。
+- `vscode`——在 VS Code 里打开 diff 与文件对比，而不是在终端里看。
 
 ## 实测发现
 
@@ -115,34 +118,37 @@
 ```
 ├── settings.json · AGENTS.md · APPEND_SYSTEM.md   # 主配置与两层提示词
 ├── agents/            # 七个子代理定义
-├── extensions/        # context · md-link · productivity · prompt-snippets · subagent
-├── skills/            # delegate-verify · analyze-sessions
-├── scripts/           # selftest.mjs（19 项不变量）· 技能库重建脚本
-├── npm/package.json   # 扩展包（pi-subagents · pi-goal-x · rpiv-ask-user-question）
+├── extensions/        # context · md-link · productivity · prompt-snippets · herdr-blocked-bridge · subagent
+├── skills/            # delegate-verify · analyze-sessions · herdr · vscode
+├── scripts/           # selftest.mjs · setup-macos-notifications.sh · herdr-notify.config.env
+├── npm/package.json   # 扩展包（pi-subagents · pi-goal-x · pi-web-access · rpiv-ask-user-question · rpiv-btw）
 ├── themes/            # catppuccin-mocha
-└── docs/              # 子代理系统说明书 · 两篇已提交上游的 issue 报告
+└── docs/              # 子代理说明书 · macOS 通知设置方法 · 配置事实 · 上游 issue 报告
 ```
 
 ## 安装与适配
 
 ```bash
+# 0. 一条命令：复制配置并安装扩展包（幂等；绝不碰 auth.json）
+./install.sh
+
 # 1. 复制到 ~/.pi/agent/（或按需摘取）
 # 2. 安装扩展包
 cd npm && npm install
-# 3. pi 宿主包是普通 semver 依赖（^0.86.0），开箱即可解析；
+# 3. pi 宿主包是普通 semver 依赖（^1.4.0），开箱即可解析；
 #    npm/.npmrc 以 legacy-peer-deps 容忍 pi-goal-x 的过期 peer 范围。
 #    背景见 docs/upstream-issue-host-package-resolution.md（Issue 1 上游已修复）
 # 4. 自建 auth.json 填入你的 provider 密钥，然后 chmod 600：
 #    { "<provider>": { "type": "api_key", "key": "sk-..." } }
 # 5. 校验
-npm run selftest   # 预期 19 passed
+npm run selftest   # 机器可检不变量（需先装好宿主包）
 ```
 
 `settings.json` 中的技能白名单指向 `~/.pi/agent/skills-optional/...`，可用 `scripts/clone-skill-repos.sh` 重建或自行删减。
 
 ## 刻意排除的内容
 
-`auth.json`（密钥）、`models-store.json`（本机模型目录缓存，由 pi 自行生成）、`sessions/`、`missions/`、`run-history.jsonl`（隐私数据）、Herdr 集成生成件（经 `herdr integration install pi` 重新生成）、第三方技能库（由重建脚本恢复）。
+`auth.json`（密钥）、`models-store.json`（本机模型目录缓存，由 pi 自行生成）、`sessions/`、`missions/`、`run-history.jsonl`（隐私数据）、Herdr 集成生成件（经 `herdr integration install pi` 重新生成）、第三方技能库（由重建脚本恢复），以及所有机器绑定：`subagents.machines`、家目录绝对路径、`~/.ssh/config`、systemd 单元。仓里的 ssh/systemd 是**模板**——主机名、用户、端口、密钥名一律写作 `（待填）` 占位符，用前自行填写。
 
 ## 许可
 

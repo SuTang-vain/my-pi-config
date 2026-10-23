@@ -7,7 +7,7 @@
 | 文件 | 功能 | 开关 |
 | --- | --- | --- |
 | `session-name.ts` | 首次输入时自动命名会话(截断 40 字符,跳过 `/` 命令);`/session-name [名字]` 手动设置/查看 | — |
-| `notify.ts` | agent 完成时桌面通知(macOS 用 osascript,兼容任何终端;Kitty/iTerm2/Ghostty 用 OSC 协议) | `PI_NO_NOTIFY=1` |
+| `notify.ts` | **仅在 herdr 之外生效**（`HERDR_ENV=1` 时直接返回，通知归 herdr）。触发 `agent_settled`；Ghostty/iTerm2/WezTerm 用 OSC 777（通知归属终端 App、点击回窗口），Kitty 用 OSC 99，macOS 其余情况回落 osascript | `PI_NO_NOTIFY=1` |
 | ~~`model-status.ts`~~ | 状态栏常驻当前模型——**已停用**(2026-09-20,footer 已常驻显示模型,双显示属纯重复);恢复=取消 `index.ts` 里两行注释 | 在 `index.ts` 注释中 |
 | `todo.ts` | 官方 todo 扩展:模型可调用的 `todo` 工具 + `/todos` 可视化面板(状态存会话内,分支安全) | — |
 | `footer.ts` | TUI 底部自定义 footer:本会话 token 用量 / 成本 / git 分支 / 模型,`/footer` 开关 | — |
@@ -17,7 +17,7 @@
 
 - 启动 `pi` 后,future 底部自动显示 `↑3.2k ↓1.1k $0.042 deepseek-v4-pro (main)`
 - 直接说"帮我列个待办"——模型会调用 `todo` 工具;`/todos` 查看面板
-- 每次 agent 跑完,系统弹通知
+- 每次 agent 跑完,系统弹通知（在 herdr 里运行时由 herdr 发,见下方「通知」）
 - `/resume` 列表里会话名是任务摘要而不是原始长 prompt
 
 ## 调整
