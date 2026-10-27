@@ -1,6 +1,6 @@
 ---
 name: delegate-verify
-description: Use when dispatching subagents to verify or cross-check conclusions/recommendations (your own or others'). Triggers on requests like "派子agent核对/验证/校验/复核", "verify with subagents", "cross-check these claims". Standard read-only verification flow — do not re-derive it on the spot.
+description: Use when dispatching subagents to verify or cross-check conclusions/recommendations (your own or others'). Triggers on requests like "verify with subagents" or "cross-check these claims". Standard read-only verification flow — do not re-derive it on the spot.
 ---
 
 # Delegated Verification
