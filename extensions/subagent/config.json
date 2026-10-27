@@ -5,5 +5,19 @@
   "inlineToolDisplay": "summary",
   "mainWindowRenderer": {
     "compactResultMaxLines": 4
+  },
+  "disabledFeatures": [
+    "watchdog",
+    "panes",
+    "missions",
+    "lane-management",
+    "lane-metadata",
+    "spawn-budget-grants",
+    "preflight",
+    "control-overrides",
+    "extension-bindings"
+  ],
+  "scheduledRuns": {
+    "enabled": false
   }
 }

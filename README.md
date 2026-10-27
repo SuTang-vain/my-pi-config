@@ -82,6 +82,7 @@ Self-written extensions under `extensions/`:
 | `context.ts` | `/context` renders a colored grid of context-window composition with threshold warnings |
 | `md-link.ts` | Links a Markdown file to the session for collaborative editing (assistant output is appended; `/send-diff` returns edits to the model) |
 | `herdr-blocked-bridge.ts` | Bridges `rpiv:ask-user:blocked` to herdr's `herdr:blocked` agent state, so a mid-run questionnaire reads as *needs input* (and notifies) instead of *working* |
+| `herdr-agent-state.ts` | Reports agent state to herdr over its socket API (installed by `herdr integration install pi`), so the sidebar, saved machines and notifications follow the run rather than the terminal title |
 | `subagent/config.json` | pi-subagents tuning: fresh context by default, spawn budget, checkpoint grace period |
 
 ## Skills
@@ -116,9 +117,9 @@ These defects were found in this configuration and fixed; each is recorded with 
 ```
 ├── settings.json · AGENTS.md · APPEND_SYSTEM.md   # Main configuration and prompt layers
 ├── agents/            # Seven subagent definitions
-├── extensions/        # context · md-link · productivity · prompt-snippets · herdr-blocked-bridge · subagent
+├── extensions/        # context · md-link · productivity · prompt-snippets · herdr-blocked-bridge · herdr-agent-state · subagent
 ├── skills/            # delegate-verify · analyze-sessions · herdr · vscode
-├── scripts/           # selftest.mjs · setup-macos-notifications.sh · herdr-notify.config.env
+├── scripts/           # selftest.mjs · setup-macos-notifications.sh · herdr-notify.config.env · clone-skill-repos.sh · session-names.mjs · session-rename.mjs
 ├── npm/package.json   # Extension packages (pi-subagents · pi-goal-x · pi-web-access · rpiv-ask-user-question · rpiv-btw)
 ├── themes/            # catppuccin-mocha
 └── docs/              # Subagent guide · macOS notification setup · config facts · upstream issue reports

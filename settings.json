@@ -15,7 +15,9 @@
     "kimi-coding/kimi-for-coding": "max",
     "zai-coding-cn/glm-5.3": "max",
     "deepseek/deepseek-v4-pro": "max",
-    "kimi-coding/k3-256k": "max"
+    "kimi-coding/k3-256k": "max",
+    "kimi-coding/k3.1-pro": "max",
+    "kimi-coding/k3.1-pro-highspeed": "max"
   },
   "showCacheMissNotices": true,
   "skills": [
