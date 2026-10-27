@@ -17,6 +17,13 @@ else
   echo "done: pi-skills"
 fi
 
+# The repository ships its own copy of the vscode skill under skills/; the pi-skills clone carries
+# one too, and two skills with the same name make pi report a conflict.
+if [ -f "$AGENT_DIR/skills/vscode/SKILL.md" ] && [ -d "$AGENT_DIR/skills/pi-skills/vscode" ]; then
+  rm -rf "$AGENT_DIR/skills/pi-skills/vscode"
+  echo "removed duplicate: skills/pi-skills/vscode (skills/vscode wins)"
+fi
+
 # 2) scientific-agent-skills: sparse clone of the skills/ directory only
 #    settings.json whitelists four of its skills; they run through PEP 723 `uv run` or the standard
 #    library, so no .venv is required.

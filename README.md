@@ -128,8 +128,12 @@ These defects were found in this configuration and fixed; each is recorded with 
 ## Installation and Adaptation
 
 ```bash
-# 0. One-shot: copies config and installs packages (idempotent; never touches auth.json)
-./install.sh
+# 0. One-shot: copies config, installs packages, rebuilds the skill clones
+#    (idempotent; never touches auth.json; never overwrites an existing models-store.json)
+./install.sh --with-skills
+
+# Without network access, skip the clones and rebuild them later:
+#   ./install.sh && scripts/clone-skill-repos.sh
 
 # 1. Copy into ~/.pi/agent/ (or adopt individual pieces)
 # 2. Install extension packages
@@ -143,7 +147,17 @@ cd npm && npm install
 npm run selftest   # machine-checkable invariants (needs the host package installed)
 ```
 
-The skill whitelist in `settings.json` references `~/.pi/agent/skills-optional/...`; rebuild with `scripts/clone-skill-repos.sh` or trim to taste.
+Two inputs are not credentials and therefore ship with the repository:
+
+| Input | What it is | How it lands |
+|---|---|---|
+| `models-store.json` | provider and model metadata (ids, prices, context windows, thinking-level maps) — **no keys** | `install.sh` copies `models-store.example.json` when the target has no registry; an existing file is never overwritten |
+| `skills-optional/` + `skills/pi-skills/` | clean clones of two public repositories; `settings.json` whitelists four skills inside the first one | `install.sh --with-skills`, or `scripts/clone-skill-repos.sh` on its own |
+
+Neither one is a secret, but both are required for `npm run selftest` to pass: without the registry
+the model references cannot resolve, and without the clones the skill whitelist points at missing
+paths. Skeletons and examples were deliberately avoided — a registry with the real provider
+metadata is usable as-is once you add keys.
 
 ## Deliberately Excluded
 

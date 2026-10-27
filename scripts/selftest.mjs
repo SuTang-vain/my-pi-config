@@ -59,7 +59,16 @@ function warn(name, problem) {
 
 const readJson = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
 const exists = (p) => fs.existsSync(p);
-const expand = (p) => (p.startsWith("~/") ? path.join(os.homedir(), p.slice(2)) : p);
+// A whitelist entry written as `~/.pi/agent/...` names the install root, so it follows AGENT_DIR
+// (PI_AGENT_DIR) rather than a possibly different real home. Everything else expands normally.
+const expand = (p) => {
+	if (!p.startsWith("~/")) return p;
+	const abs = path.join(os.homedir(), p.slice(2));
+	const root = path.join(os.homedir(), ".pi", "agent");
+	if (AGENT_DIR !== root && (abs === root || abs.startsWith(root + path.sep)))
+		return path.join(AGENT_DIR, abs.slice(root.length + 1));
+	return abs;
+};
 
 /** Minimal `>=a.b.c <d.e.f`-style comparator. Returns null when it cannot judge. */
 function satisfies(version, range) {
@@ -117,7 +126,8 @@ let registryNote = "not built";
 
 check("models-store.json / auth.json parse", () => {
 	const store = readJson(storePath);
-	const auth = readJson(authPath);
+	// auth.json is deliberately unmanaged and may not exist yet; treat that as "no provider".
+	const auth = exists(authPath) ? readJson(authPath) : {};
 	const authed = new Set(
 		Object.entries(auth)
 			.filter(([, v]) => v && typeof v === "object" && (v.key || v.type))
@@ -132,7 +142,11 @@ check("models-store.json / auth.json parse", () => {
 		}
 	}
 	registryNote = `${registry.size} models available from ${authed.size} providers with credentials`;
-	return registry.size > 0 ? null : "registry is empty: no provider has credentials, so no model reference can be verified";
+	if (registry.size > 0) return null;
+	// No credentials yet (auth.json is unmanaged and optional): the references cannot be verified,
+	// but nothing is broken — this is a warning, not a failure.
+	warn("models-store.json / auth.json parse", "no provider credentials yet; model references are not checked");
+	return null;
 });
 
 const resolves = (id) => registry.has(id);
@@ -141,12 +155,14 @@ const resolves = (id) => registry.has(id);
 group = "model references";
 check("settings.defaultProvider/defaultModel resolve in the registry", () => {
 	if (!settings) return "settings.json did not parse";
+	if (registry.size === 0) return null;
 	const id = `${settings.defaultProvider}/${settings.defaultModel}`;
 	return resolves(id) ? null : `default model ${id} is not in the registry (${registryNote})`;
 });
 
 check("every settings.modelThinkingLevels key resolves in the registry", () => {
 	if (!settings) return "settings.json did not parse";
+	if (registry.size === 0) return null;
 	const ghosts = Object.keys(settings.modelThinkingLevels ?? {}).filter((k) => !resolves(k));
 	return ghosts.length ? `${ghosts.length} ghost keys (silently ignored): ${ghosts.join(", ")}` : null;
 });
