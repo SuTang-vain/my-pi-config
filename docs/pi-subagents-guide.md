@@ -1,10 +1,11 @@
 # pi subagent system: usage guide
 
 > Baseline at first writing: pi 0.85.1 with pi-subagents 0.68.0 (2026-09-16).
-> Current baseline: pi 1.4.0 with pi-subagents 0.81.0 (2026-10-23).
-> **Authority**: dispatch discipline lives in `skills/delegate-verify/SKILL.md`, which carries a
-> source-verified version stamp. This page is background on how the system is composed; if a
-> behavioural statement here conflicts with that skill, the skill wins.
+> **Authority**: dispatch discipline lives in `skills/delegate-verify/SKILL.md`. Its audit stamps
+> are historical provenance, not a declaration of the currently installed version; use
+> `npm/package.json` and the local lockfile for versions, and re-check behavioral claims against
+> installed source. This page is background on how the system is composed; if a behavioural
+> statement here conflicts with that skill, the skill wins.
 > Evidence base: source inspection (`schemas.ts`) plus runs on the local machine.
 
 ## 1. Composition

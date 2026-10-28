@@ -3,21 +3,32 @@
 Findings that are only needed when something breaks or when the configuration is being changed.
 None of this is required reading for normal use.
 
-## 1. Compaction failure: "the summary is incomplete"
+## 1. Compaction trigger and summary output
 
-- The summary call is capped at `min(0.8 x reserveTokens, model.maxTokens)`
-  (`src/core/compaction/compaction.ts`).
-- With the default `reserveTokens: 16384` the cap is 13,107 tokens regardless of history length;
-  changing the model does not help, because `min` takes the smaller value.
-- The key is nested: `settings.json` must contain
+- Auto-compaction fires when `contextTokens > contextWindow - reserveTokens`. `reserveTokens` only
+  decides *when* compaction happens (default `16384`); raising it compacts earlier, it does not buy
+  a larger summary output budget.
+- Since Pi 1.4.0 the summary's output budget defaults to the model's output limit and is reduced so
+  that input + output fit the context window; the input itself is not truncated on the compaction
+  path (input trimming exists only for branch summaries). The old
+  `min(0.8 x reserveTokens, model.maxTokens)` cap is gone (see `docs/compaction.md` and the 1.4.0
+  entry in `CHANGELOG.md` inside the pi package).
+- `keepRecentTokens` is how many recent tokens stay out of the summary, default `20000`.
+- The keys must live inside the `compaction` object; putting `reserveTokens` or `keepRecentTokens`
+  at the top level is silently ignored. Reader: `settings-manager.ts` ->
+  `getCompactionTokenSetting()`, resolving matched `modelOverride` -> plain `compaction` settings
+  -> built-in defaults.
 
   ```json
   "compaction": { "reserveTokens": 48000, "keepRecentTokens": 60000 }
   ```
 
-  The reader is `this.settings.compaction?.reserveTokens ?? 16384` in
-  `src/core/settings-manager.ts`; a top-level key of the same name is silently ignored.
-- Takes effect after `/reload` (`resource-loader` calls `settingsManager.reload()`), no restart.
+- Takes effect after `/reload`, no restart: `/reload` -> `AgentSession.reload()` ->
+  `settingsManager.reload()`; values are read live on every check and nothing watches
+  `settings.json`. `/reload` is refused while a response is streaming or a compaction is running.
+- With the shipped values `reserveTokens: 48000` and `keepRecentTokens: 60000`, the threshold for a
+  model with context window `C` is `C - 48000`; use `compaction.modelOverrides` when a per-model
+  split is needed.
 
 ## 2. What a child session inherits
 
