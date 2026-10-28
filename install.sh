@@ -61,13 +61,27 @@ if [ -f "$ROOT/models-store.example.json" ]; then
   fi
 fi
 
-# Extension packages.
+# Extension packages. The updater creates host-link and host-deps links before npm resolves
+# file: dependencies, keeping every direct host package on the active Pi release.
 if [ -f "$ROOT/npm/package.json" ]; then
   say "-> npm dependencies ($ROOT/npm)"
   run "mkdir -p '$DEST/npm'"
   run "cp '$ROOT/npm/package.json' '$DEST/npm/package.json'"
-  run "cd '$DEST/npm' && npm install --legacy-peer-deps"
+  run "cp '$ROOT/npm/.npmrc' '$DEST/npm/.npmrc'"
+  run "PI_AGENT_DIR='$DEST' node '$DEST/scripts/pi-config-update.mjs' --host-only"
 fi
+
+# Expose the same update path as a command. Never replace an unrelated executable.
+BIN_DIR="${PI_CONFIG_UPDATE_BIN_DIR:-$HOME/.local/bin}"
+UPDATE_LINK="$BIN_DIR/pi-config-update"
+UPDATE_TARGET="$DEST/scripts/pi-config-update.mjs"
+if [ -e "$UPDATE_LINK" ] && [ ! -L "$UPDATE_LINK" ]; then
+  say "refusing to replace non-symlink $UPDATE_LINK" >&2
+  exit 1
+fi
+say "-> command $UPDATE_LINK"
+run "mkdir -p '$BIN_DIR'"
+run "ln -sfn '$UPDATE_TARGET' '$UPDATE_LINK'"
 
 # Skill clones: the whitelist in settings.json points into skills-optional/, and pi-skills is
 # scanned from skills/. Both are clean clones of public repositories, so they are rebuilt instead
@@ -88,3 +102,4 @@ say "     (or ./install.sh --with-skills); settings.json whitelists four of thos
 say "  3. Review $DEST/models-store.json: it came from models-store.example.json, and any provider"
 say "     you do not have a key for is simply unusable."
 say "  4. Verify: cd $DEST/npm && npm run selftest"
+say "  5. Update Pi and extensions: pi-config-update"

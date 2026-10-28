@@ -5,6 +5,8 @@ sessions/
 missions/
 run-history.jsonl
 node_modules/
+npm/host-link
+npm/host-deps/
 session-hoarder/
 *.local
 .DS_Store

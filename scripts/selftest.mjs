@@ -291,6 +291,7 @@ group = "host package";
 const HOST_PKG = "@earendil-works/pi-coding-agent";
 const subagentsDir = path.join(MODULE_DIR, "pi-subagents");
 let globalPiVersion = null;
+let globalPiDir = null;
 
 check("the pi host package is locatable and its version readable", () => {
 	// Three layouts are in use: the managed installer (install/current-version ->
@@ -306,6 +307,7 @@ check("the pi host package is locatable and its version readable", () => {
 	candidates.push(path.join(os.homedir(), ".local", "lib", "node_modules", HOST_PKG, "package.json"));
 	const found = candidates.find((p) => exists(p));
 	if (!found) return `not found in any of:\n${candidates.map((c) => `  ${c}`).join("\n")}`;
+	globalPiDir = path.dirname(found);
 	globalPiVersion = readJson(found).version;
 	return null;
 });
@@ -340,6 +342,42 @@ check("the installed host package version matches the global pi (no stale copy)"
 	if (!exists(dir) || !globalPiVersion) return null;
 	const v = readJson(path.join(dir, "package.json")).version;
 	return v === globalPiVersion ? null : `node_modules has ${v} while the global version is ${globalPiVersion} → child sessions would run a different pi`;
+});
+
+check("host-link resolves to the active host package", () => {
+	const link = path.join(NPM_DIR, "host-link");
+	if (!exists(link) || !globalPiDir) return `${link} is missing or the active host is unknown`;
+	try {
+		const linked = fs.realpathSync(link);
+		const active = fs.realpathSync(globalPiDir);
+		return linked === active ? null : `host-link resolves to ${linked}, active host is ${active} → run pi-config-update`;
+	} catch (error) {
+		return `host-link cannot be resolved: ${error?.message ?? error}`;
+	}
+});
+
+check("direct host dependencies use local links to the active host", () => {
+	if (!globalPiDir) return null;
+	const manifest = readJson(path.join(NPM_DIR, "package.json"));
+	const names = Object.keys(manifest.dependencies ?? {}).filter(
+		(name) => name.startsWith("@earendil-works/pi-") && name !== HOST_PKG,
+	);
+	const problems = [];
+	for (const name of names) {
+		const base = path.basename(name);
+		const spec = `file:host-deps/${base}`;
+		if (manifest.dependencies[name] !== spec) problems.push(`${name}: manifest has ${manifest.dependencies[name]}, expected ${spec}`);
+		const expected = path.join(path.dirname(globalPiDir), base);
+		try {
+			if (fs.realpathSync(path.join(NPM_DIR, "host-deps", base)) !== fs.realpathSync(expected))
+				problems.push(`${name}: host-deps points away from the active host`);
+			if (fs.realpathSync(path.join(MODULE_DIR, name)) !== fs.realpathSync(expected))
+				problems.push(`${name}: node_modules points away from the active host`);
+		} catch {
+			problems.push(`${name}: host-deps or node_modules link is missing`);
+		}
+	}
+	return problems.length ? `${problems.join("; ")} → run pi-config-update` : null;
 });
 
 // ── subagent config semantics ─────────────────────────────────────────
